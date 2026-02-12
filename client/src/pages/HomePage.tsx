@@ -53,7 +53,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
         <div className={`relative z-10 text-center max-w-7xl mx-auto px-6 transition-all duration-1600 ${isLoaded ? 'apple-slide-up' : 'opacity-0 translate-y-20'}`} style={{ transitionDelay: '600ms' }}>
           <div className="mb-8">
-            <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-red-500/10 text-red-400 border border-red-500/20 backdrop-blur-sm">
+            <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-red-500/10 text-red-400 border border-red-500/20 ">
               <Sparkles className="w-4 h-4 mr-2" />
               Premium FiveM Scripts
             </span>
@@ -159,7 +159,7 @@ const HomePage: React.FC<HomePageProps> = ({
             <div className={`flex flex-col items-center justify-center py-20 transition-all duration-1000 ${isLoaded ? 'apple-fade-in' : 'opacity-0 translate-y-10'}`} style={{ transitionDelay: '1400ms' }}>
               <div className="relative mb-8">
                 <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 to-purple-500/20 blur-3xl rounded-full"></div>
-                <div className="relative bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm p-8 rounded-3xl border border-gray-700/50">
+                <div className="relative bg-gradient-to-br from-gray-800/90 to-gray-900/90  p-8 rounded-3xl border border-gray-700/50">
                   <svg 
                     className="w-20 h-20 text-gray-400" 
                     fill="none" 

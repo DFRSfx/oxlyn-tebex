@@ -59,12 +59,45 @@ const ScriptsPage: React.FC<ScriptsPageProps> = ({
     fetchCategories();
   }, []);
 
+  // Deduplicate packages by base name, keeping the one with the lowest price
+  const deduplicatePackages = (pkgs: Package[]): Package[] => {
+    const packageGroups = new Map<string, Package[]>();
+
+    // Group packages by base name
+    pkgs.forEach(pkg => {
+      const baseName = pkg.name
+        .replace(/\s*\(OPEN-SOURCE\)/gi, '')
+        .replace(/\s*\(ESCROWED\)/gi, '')
+        .replace(/\s*\(Open Source\)/gi, '')
+        .replace(/\s*\(Escrow\)/gi, '')
+        .trim();
+
+      if (!packageGroups.has(baseName)) {
+        packageGroups.set(baseName, []);
+      }
+      packageGroups.get(baseName)!.push(pkg);
+    });
+
+    // For each group, select the package with the lowest price
+    const deduplicated: Package[] = [];
+    packageGroups.forEach((variants) => {
+      const lowestPricePackage = variants.reduce((min, current) =>
+        current.price < min.price ? current : min
+      );
+      deduplicated.push(lowestPricePackage);
+    });
+
+    return deduplicated;
+  };
+
   // Filter packages based on the selected category
   // Também filtrar packages que contenham "vanguard" na descrição
-  const filteredPackages = (selectedCategory === 'all'
-    ? packages
-    : packages.filter(pkg => pkg.category?.id === selectedCategory))
-    .filter(pkg => !pkg.description?.toLowerCase().includes('vanguard'));
+  const filteredPackages = deduplicatePackages(
+    (selectedCategory === 'all'
+      ? packages
+      : packages.filter(pkg => pkg.category?.id === selectedCategory))
+      .filter(pkg => !pkg.description?.toLowerCase().includes('vanguard'))
+  );
 
   return (
     <section className="py-32 relative min-h-screen">
@@ -80,29 +113,6 @@ const ScriptsPage: React.FC<ScriptsPageProps> = ({
             : "We're cooking up the best scripts just for you — greatness is on the way."}
         </p>
       </div>
-
-      {/* Category Filter Buttons */}
-      {!isLoadingCategories && categories.length > 0 && packages.length > 0 && (
-        <div className={`flex flex-wrap justify-center gap-4 mb-16 transition-all duration-1000 ${isLoaded ? 'apple-scale-in' : 'opacity-0 scale-95'}`} style={{ transitionDelay: '200ms' }}>
-          <FilterButton
-            label="All"
-            value="all"
-            active={selectedCategory === 'all'}
-            onClick={() => setSelectedCategory('all')}
-          />
-          {categories
-            .sort((a, b) => a.order - b.order)
-            .map(category => (
-              <FilterButton
-                key={category.id}
-                label={formatCategoryName(category.name)}
-                value={category.id}
-                active={selectedCategory === category.id}
-                onClick={(value) => setSelectedCategory(value as number)}
-              />
-            ))}
-        </div>
-      )}
 
       {/* Scripts Grid or Empty State */}
       {filteredPackages.length > 0 ? (
@@ -121,7 +131,7 @@ const ScriptsPage: React.FC<ScriptsPageProps> = ({
         <div className={`flex flex-col items-center justify-center py-20 transition-all duration-1000 ${isLoaded ? 'apple-fade-in' : 'opacity-0 translate-y-10'}`}>
           <div className="relative mb-8">
             <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 blur-3xl rounded-full"></div>
-            <div className="relative bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm p-8 rounded-3xl border border-gray-700/50">
+            <div className="relative bg-gradient-to-br from-gray-800/90 to-gray-900/90  p-8 rounded-3xl border border-gray-700/50">
               <svg 
                 className="w-20 h-20 text-gray-400" 
                 fill="none" 

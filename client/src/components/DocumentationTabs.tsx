@@ -40,14 +40,171 @@ const DocumentationTabs: React.FC<DocumentationTabsProps> = ({ resource }) => {
     return colorMap[lang] || 'from-primary-orange to-orange-600';
   };
 
+  const detectCodeLanguage = (code: string): string => {
+    // Detect language based on code patterns
+    if (/\b(local|function|end|then|elseif)\b/.test(code)) return 'lua';
+    if (/^[\s]*[{[]/.test(code) && /[}\]][\s]*$/.test(code)) return 'json';
+    if (/\b(const|let|var|function|=>|import|export)\b/.test(code)) return 'javascript';
+    if (/\b(Config\.|exports\.|RegisterCommand|AddEventHandler)\b/.test(code)) return 'lua';
+    return 'code';
+  };
+
+  const isCodeLine = (line: string): boolean => {
+    const trimmed = line.trim();
+    // Check for common code patterns
+    return (
+      trimmed.startsWith('local ') ||
+      trimmed.startsWith('function ') ||
+      trimmed.startsWith('Config.') ||
+      trimmed.startsWith('exports.') ||
+      trimmed.includes(' = {') ||
+      trimmed.includes(' = function') ||
+      /^[a-zA-Z_]\w*\s*=\s*.+/.test(trimmed) ||
+      /^\s{4,}/.test(line) || // Indented 4+ spaces
+      trimmed.startsWith('return ') ||
+      trimmed.startsWith('if ') ||
+      trimmed.startsWith('end')
+    );
+  };
+
+  const renderFormattedText = (content: string) => {
+    const lines = content.split('\n');
+    const elements: JSX.Element[] = [];
+    let currentParagraph: string[] = [];
+    let listItems: string[] = [];
+    let codeBlock: string[] = [];
+
+    const flushParagraph = () => {
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <p key={elements.length} className="mb-4 text-white/80 leading-relaxed">
+            {currentParagraph.join(' ')}
+          </p>
+        );
+        currentParagraph = [];
+      }
+    };
+
+    const flushList = () => {
+      if (listItems.length > 0) {
+        elements.push(
+          <ul key={elements.length} className="mb-4 space-y-2 ml-2">
+            {listItems.map((item, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="text-primary-orange mt-1 shrink-0">•</span>
+                <span className="text-white/80">{item}</span>
+              </li>
+            ))}
+          </ul>
+        );
+        listItems = [];
+      }
+    };
+
+    const flushCodeBlock = () => {
+      if (codeBlock.length > 0) {
+        const code = codeBlock.join('\n');
+        const language = detectCodeLanguage(code);
+        elements.push(
+          <div key={elements.length} className="mb-6">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 overflow-x-auto">
+              <pre className="text-sm font-mono leading-relaxed">
+                <code>
+                  {language === 'lua' ? (
+                    <LuaSyntax code={code} />
+                  ) : language === 'json' ? (
+                    <JsonSyntax code={code} />
+                  ) : (
+                    <DefaultSyntax code={code} />
+                  )}
+                </code>
+              </pre>
+            </div>
+          </div>
+        );
+        codeBlock = [];
+      }
+    };
+
+    let inCodeBlock = false;
+
+    lines.forEach((line, i) => {
+      const trimmedLine = line.trim();
+
+      // Detect start/end of code blocks
+      const looksLikeCode = isCodeLine(line);
+      const nextLine = i < lines.length - 1 ? lines[i + 1] : '';
+      const nextLooksLikeCode = isCodeLine(nextLine);
+
+      // Start code block if we detect code
+      if (looksLikeCode && !inCodeBlock) {
+        flushParagraph();
+        flushList();
+        inCodeBlock = true;
+      }
+
+      // In code block
+      if (inCodeBlock) {
+        codeBlock.push(line);
+
+        // End code block if next line doesn't look like code or is empty
+        if (!nextLooksLikeCode && (nextLine.trim() === '' || i === lines.length - 1)) {
+          flushCodeBlock();
+          inCodeBlock = false;
+        }
+        return;
+      }
+
+      // Empty line - flush current paragraph/list
+      if (trimmedLine === '') {
+        flushParagraph();
+        flushList();
+        return;
+      }
+
+      // Section header (text ending with colon)
+      if (trimmedLine.endsWith(':') && trimmedLine.length < 50 && !trimmedLine.includes('•')) {
+        flushParagraph();
+        flushList();
+        elements.push(
+          <h4 key={elements.length} className="text-lg font-bold text-white mt-6 mb-3">
+            {trimmedLine}
+          </h4>
+        );
+        return;
+      }
+
+      // Bullet point
+      if (trimmedLine.startsWith('•') || trimmedLine.startsWith('-')) {
+        flushParagraph();
+        const cleanedItem = trimmedLine.replace(/^[•\-]\s*/, '');
+        listItems.push(cleanedItem);
+        return;
+      }
+
+      // Regular text - add to current paragraph
+      flushList();
+      if (trimmedLine) {
+        currentParagraph.push(trimmedLine);
+      }
+    });
+
+    // Flush any remaining content
+    flushParagraph();
+    flushList();
+    flushCodeBlock();
+
+    return <>{elements}</>;
+  };
+
   const renderSection = (section: DocumentationSection, index: number) => {
     switch (section.type) {
       case 'text':
         return (
           <div key={index} className="mb-8">
             <h3 className="text-2xl font-bold text-white mb-4">{section.title}</h3>
-            <div className="text-white/80 leading-relaxed whitespace-pre-wrap text-base">
-              {section.content}
+            <div className="text-base">
+              {renderFormattedText(section.content)}
             </div>
           </div>
         );

@@ -103,7 +103,7 @@ const CartPage: React.FC = () => {
             </div>
 
             {cartItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 px-8 bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl backdrop-blur-sm">
+              <div className="flex flex-col items-center justify-center py-16 px-8 bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl ">
                 <div className="relative mb-8">
                   <div className="absolute inset-0 bg-gradient-to-r from-orange-500/20 to-orange-600/20 blur-3xl rounded-full"></div>
                   <ShoppingCart className="w-24 h-24 text-orange-400 relative z-10" strokeWidth={1.5} />
@@ -152,7 +152,7 @@ const CartPage: React.FC = () => {
             ) : (
               <div className="space-y-4">
                 {/* Cart Items */}
-                <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl overflow-hidden backdrop-blur-sm">
+                <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl overflow-hidden ">
                   {cartItems.map((item, index) => {
         
                   return (
@@ -220,7 +220,7 @@ const CartPage: React.FC = () => {
                 </div>
 
                 {/* Subscription Promo */}
-                <div className="bg-gradient-to-r from-orange-900/40 via-orange-800/40 to-orange-900/40 border border-orange-500/40 rounded-2xl p-6 backdrop-blur-sm relative overflow-hidden">
+                <div className="bg-gradient-to-r from-orange-900/85 via-orange-800/85 to-orange-900/85 border border-orange-500/40 rounded-2xl p-6  relative overflow-hidden">
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-2">
                       <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -246,7 +246,7 @@ const CartPage: React.FC = () => {
           {cartItems.length > 0 && (
           <div className="lg:col-span-1">
             <div className="sticky top-32">
-              <div className="bg-gradient-to-br from-gray-800/70 to-gray-900/70 border border-gray-700/60 rounded-2xl p-6 backdrop-blur-sm">
+              <div className="bg-gradient-to-br from-gray-800/70 to-gray-900/70 border border-gray-700/60 rounded-2xl p-6 ">
                 <h3 className="text-2xl font-bold text-white mb-6">Order Summary</h3>
 
                 {/* Coupon Code Input */}

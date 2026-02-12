@@ -7,12 +7,13 @@ import ScriptsPage from './pages/ScriptsPage';
 import CartPage from './pages/CartPage';
 import PackageDetailsPage from './pages/PackageDetailsPage';
 import CheckoutCancelled from './pages/CheckoutCancelled';
+import TermsPage from './pages/TermsPage';
 import CheckoutModal from './components/CheckoutModal';
 import AdminApp from './admin/AdminApp';
 import DiscordCallback from './admin/pages/DiscordCallback';
 import { useAuth } from './context/AuthContext';
 import { Package } from './types';
-import { scrollToSection, handleDiscordRedirect, handleYoutubeRedirect, handleTebexRedirect } from './utils/helpers';
+import { scrollToSection, handleDiscordRedirect, handleTebexRedirect } from './utils/helpers';
 import { useTebex } from './context/TebexContext';
 import { tebexService } from './services/tebexService';
 import { mapTebexPackageToPackage } from './utils/packageMapper';
@@ -53,7 +54,7 @@ function App() {
 
     document.querySelectorAll('[id]').forEach((el) => observer.observe(el));
 
-    // Fetch packages from Tebex API
+    // Fetch packages from Tebex API (only on mount)
     const fetchPackages = async () => {
       setIsLoadingPackages(true);
       try {
@@ -76,14 +77,13 @@ function App() {
       window.removeEventListener('scroll', handleScroll);
       observer.disconnect();
     };
-  }, [enrichCartWithPackageData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount, not when enrichCartWithPackageData changes
 
   if (isTebexLoading || isLoadingPackages || authLoading) {
     return <Loader message={loadingMessage || 'Loading packages...'} />;
   }
-
-  const snowflake1 = document.createElement('img')
-  snowflake1.src = 'https://i.ibb.co/p6z4p4Mv/flakes.webp'
+  
   return (
     <>
     <Routes>
@@ -191,7 +191,6 @@ function MainApp({
         navigateToScripts={() => navigate('/scripts')}
         navigateToHome={() => navigate('/')}
         handleDiscordRedirect={handleDiscordRedirect}
-        handleYoutubeRedirect={handleYoutubeRedirect}
         openPackageDetails={openPackageDetailsFromHome}
       />
 
@@ -216,6 +215,7 @@ function MainApp({
           <PackageDetailsPage packages={packages} />
         } />
         <Route path="/cart" element={<CartPage />} />
+        <Route path="/terms" element={<TermsPage />} />
       </Routes>
 
       <Footer

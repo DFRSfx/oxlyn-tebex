@@ -13,7 +13,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, checkoutUrl, onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/92 z-[9999] flex items-center justify-center p-4">
       {/* Modal Container */}
       <div className="bg-zinc-900 rounded-xl w-full max-w-5xl h-[90vh] flex flex-col border border-white/10 shadow-2xl shadow-black/50 overflow-hidden">
         {/* Header */}

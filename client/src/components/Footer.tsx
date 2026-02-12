@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface FooterProps {
   navigateToScripts: () => void;
@@ -13,6 +14,22 @@ const Footer: React.FC<FooterProps> = ({
   handleDiscordRedirect,
   handleTebexRedirect,
 }) => {
+  const navigate = useNavigate();
+
+  const handleNavigation = (path: string) => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigate(path);
+  };
+
+  const handleScriptsClick = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigateToScripts();
+  };
+
+  const handleExternalLink = (url: string) => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
   return (
     <footer className="border-t border-gray-700/50 py-20 bg-gradient-to-b from-transparent to-black/50 relative z-10">
       <div className="max-w-7xl mx-auto px-6">
@@ -42,10 +59,10 @@ const Footer: React.FC<FooterProps> = ({
           <div>
             <h4 className="text-white font-bold text-lg mb-6 font-display">Links</h4>
             <ul className="space-y-4 text-white">
-              <li><button onClick={navigateToScripts} className="hover:text-red-400 transition-colors duration-300 text-left">Scripts</button></li>
+              <li><button onClick={handleScriptsClick} className="hover:text-red-400 transition-colors duration-300 text-left">Scripts</button></li>
               <li><span className="text-gray-400 cursor-not-allowed">Subscription</span></li>
-              <li><button onClick={() => scrollToSection('docs')} className="hover:text-red-400 transition-colors duration-300 text-left">Docs</button></li>
-              <li><button onClick={handleDiscordRedirect} className="hover:text-red-400 transition-colors duration-300 text-left">Discord</button></li>
+              <li><button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); scrollToSection('docs'); }} className="hover:text-red-400 transition-colors duration-300 text-left">Docs</button></li>
+              <li><button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); handleDiscordRedirect(); }} className="hover:text-red-400 transition-colors duration-300 text-left">Discord</button></li>
             </ul>
           </div>
 
@@ -53,10 +70,10 @@ const Footer: React.FC<FooterProps> = ({
           <div>
             <h4 className="text-white font-bold text-lg mb-6 font-display">Support</h4>
             <ul className="space-y-4 text-white">
-              <li><span className="hover:text-red-400 transition-colors duration-300 cursor-pointer">Terms of Service</span></li>
-              <li><span className="hover:text-red-400 transition-colors duration-300 cursor-pointer">Privacy Policy</span></li>
-              <li><span className="hover:text-red-400 transition-colors duration-300 cursor-pointer">Documentation</span></li>
-              <li><span className="hover:text-red-400 transition-colors duration-300 cursor-pointer">FAQ</span></li>
+              <li><button onClick={() => handleNavigation('/terms')} className="hover:text-red-400 transition-colors duration-300 text-left">Terms of Service</button></li>
+              <li><button onClick={() => handleNavigation('/privacy')} className="hover:text-red-400 transition-colors duration-300 text-left">Privacy Policy</button></li>
+              <li><button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); window.open('https://docs.oxlynsoftware.com', '_blank'); }} className="hover:text-red-400 transition-colors duration-300 text-left">Documentation</button></li>
+              <li><button onClick={() => handleNavigation('/faq')} className="hover:text-red-400 transition-colors duration-300 text-left">FAQ</button></li>
             </ul>
           </div>
         </div>
@@ -68,11 +85,9 @@ const Footer: React.FC<FooterProps> = ({
           </h4>
           <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
             {/* Vanguard Labs */}
-            <a
-              href="https://vanguard-labs.xyz"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group bg-gradient-to-br from-[#092218] to-[#092218]/50 rounded-xl p-6 border border-[#00e5cc]/30 hover:border-[#00ef93]/60 transition-all duration-300 hover:scale-[1.02] backdrop-blur-sm"
+            <button
+              onClick={() => handleExternalLink('https://vanguard-labs.xyz')}
+              className="group bg-gradient-to-br from-[#092218] to-[#092218]/50 rounded-xl p-6 border border-[#00e5cc]/30 hover:border-[#00ef93]/60 transition-all duration-300 hover:scale-[1.02] text-left w-full"
             >
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-bold text-xl bg-gradient-to-r from-[#00e5cc] to-[#00ef93] bg-clip-text text-transparent">Vanguard Labs</h4>
@@ -95,14 +110,12 @@ const Footer: React.FC<FooterProps> = ({
               <span className="inline-block bg-[#00e5cc]/20 text-[#00ef93] px-3 py-1 rounded-full text-xs font-semibold border border-[#00e5cc]/30">
                 Low Cost Scripts
               </span>
-            </a>
+            </button>
 
             {/* OXLYN Software */}
-            <a
-              href="https://oxlynsoftware.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group bg-gradient-to-br from-amber-500/10 to-orange-500/5 rounded-xl p-6 border border-amber-500/30 hover:border-amber-500/60 transition-all duration-300 hover:scale-[1.02] backdrop-blur-sm"
+            <button
+              onClick={() => handleExternalLink('https://oxlynsoftware.com')}
+              className="group bg-gradient-to-br from-amber-500/10 to-orange-500/5 rounded-xl p-6 border border-amber-500/30 hover:border-amber-500/60 transition-all duration-300 hover:scale-[1.02] text-left w-full"
             >
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-white font-bold text-xl gradient-text-brand">⌞OXLYN⌝ Software®</h4>
@@ -125,7 +138,7 @@ const Footer: React.FC<FooterProps> = ({
               <span className="inline-block bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-xs font-semibold border border-amber-500/30">
                 Professional Development
               </span>
-            </a>
+            </button>
           </div>
         </div>
 
@@ -138,7 +151,7 @@ const Footer: React.FC<FooterProps> = ({
               <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 512 512" className="text-red-500 animate-pulse" height="20" width="20" xmlns="http://www.w3.org/2000/svg">
                 <path d="M462.3 62.6C407.5 15.9 326 24.3 275.7 76.2L256 96.5l-19.7-20.3C186.1 24.3 104.5 15.9 49.7 62.6c-62.8 53.6-66.1 149.8-9.9 207.9l193.5 199.8c12.5 12.9 32.8 12.9 45.3 0l193.5-199.8c56.3-58.1 53-154.3-9.8-207.9z"></path>
               </svg>
-              by <span className="gradient-text-brand font-bold"><a href="https://github.com/DFRSfx/" target="_blank" rel="noopener noreferrer">SoaresDev</a></span>
+              by <button onClick={() => handleExternalLink('https://github.com/DFRSfx/')} className="gradient-text-brand font-bold hover:opacity-80 transition-opacity">SoaresDev</button>
             </p>
             <p className="text-white text-base mb-2">
               © {new Date().getFullYear()} <span className="gradient-text-brand font-bold">⌞OXLYN⌝ Software®</span>. All rights reserved.
@@ -158,19 +171,19 @@ const Footer: React.FC<FooterProps> = ({
 
           {/* Legal Links */}
           <div className="flex flex-wrap justify-center gap-6 mb-10 text-sm text-gray-400">
-            <a href="/terms" className="hover:text-white transition-colors hover:underline">Terms & Conditions</a>
+            <button onClick={() => handleNavigation('/terms')} className="hover:text-white transition-colors hover:underline">Terms & Conditions</button>
             <span className="text-gray-600">•</span>
-            <a href="/privacy" className="hover:text-white transition-colors hover:underline">Privacy Policy</a>
+            <button onClick={() => handleNavigation('/privacy')} className="hover:text-white transition-colors hover:underline">Privacy Policy</button>
             <span className="text-gray-600">•</span>
-            <a href="/impressum" className="hover:text-white transition-colors hover:underline">Impressum</a>
+            <button onClick={() => handleNavigation('/impressum')} className="hover:text-white transition-colors hover:underline">Impressum</button>
             <span className="text-gray-600">•</span>
-            <a href="/refunds" className="hover:text-white transition-colors hover:underline">Refund Policy</a>
+            <button onClick={() => handleNavigation('/refunds')} className="hover:text-white transition-colors hover:underline">Refund Policy</button>
           </div>
 
           {/* Tebex Section - Bottom */}
           <div className="border-t border-gray-700/30 pt-8">
             <div className="max-w-3xl mx-auto">
-              <div className="bg-gradient-to-br from-white/5 to-white/[0.02] rounded-xl p-6 border border-white/10 backdrop-blur-sm">
+              <div className="bg-gradient-to-br from-white/5 to-white/[0.02] rounded-xl p-6 border border-white/10 ">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                   <div className="flex items-center gap-4">
                     <button

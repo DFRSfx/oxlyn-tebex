@@ -190,29 +190,38 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
           const storedCfxData = sessionStorage.getItem('cfxUserData');
           const storedAppliedCoupon = sessionStorage.getItem('appliedCoupon');
 
-          if (storedBasketData) {
+          if (storedBasketData && storedCfxData) {
             const basketData: BasketData = JSON.parse(storedBasketData);
             const ident = basketData.data?.ident;
             if (ident) {
-              setBasketIdent(ident);
-              setIsLoggedIn(true);
+              try {
+                // Validate basket is still active by fetching fresh data
+                const freshBasketData = await tebexService.fetchBasketData(ident);
 
-              // Load stored CFX user data
-              if (storedCfxData) {
-                setCfxUserData(JSON.parse(storedCfxData));
+                if (freshBasketData?.data && freshBasketData.data.username_id) {
+                  // Basket is valid, proceed with login
+                  setBasketIdent(ident);
+                  setIsLoggedIn(true);
+                  setCfxUserData(JSON.parse(storedCfxData));
+
+                  // Load stored applied coupon
+                  if (storedAppliedCoupon) {
+                    setAppliedCoupon(JSON.parse(storedAppliedCoupon));
+                  }
+
+                  const items = await tebexService.fetchCartData(ident);
+                  setCartItems(items);
+                  sessionStorage.setItem('cartItems', JSON.stringify(items));
+                } else {
+                  // Basket is invalid or expired, clear session
+                  console.log('⚠️ Basket expired or invalid, clearing session');
+                  sessionStorage.clear();
+                }
+              } catch (error) {
+                // Error validating basket, clear session
+                console.log('⚠️ Error validating basket, clearing session');
+                sessionStorage.clear();
               }
-
-              // Load stored applied coupon
-              if (storedAppliedCoupon) {
-                setAppliedCoupon(JSON.parse(storedAppliedCoupon));
-              }
-
-              // Optionally refresh user data from basket on page load
-              await fetchCFXUserData();
-
-              const items = await tebexService.fetchCartData(ident);
-              setCartItems(items);
-              sessionStorage.setItem('cartItems', JSON.stringify(items));
             }
           } else {
             const storedCartItems = sessionStorage.getItem('cartItems');

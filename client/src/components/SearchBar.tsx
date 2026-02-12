@@ -88,7 +88,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ packages, onSelectPackage }) => {
       </div>
 
       {isOpen && filteredPackages.length > 0 && (
-        <div className="absolute right-0 mt-2 w-96 backdrop-blur-xl border border-gray-700/60 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in-0 slide-in-from-top-2 duration-200" style={{ background: 'rgba(23, 23, 23, 0.95)' }}>
+        <div className="absolute right-0 mt-2 w-96 border border-gray-700/60 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in-0 slide-in-from-top-2 duration-200" style={{ background: 'rgba(23, 23, 23, 0.98)' }}>
           <div className="max-h-96 overflow-y-auto">
             {filteredPackages.map((pkg) => {
               const discount = Math.round(

@@ -21,7 +21,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/80 backdrop-blur-sm z-40 transition-opacity duration-500 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black/90 z-40 transition-opacity duration-500 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       />
 
@@ -32,7 +32,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
         style={{ transform: isOpen ? 'translateX(0%)' : 'translateX(100%)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-700/30 bg-black/50 backdrop-blur-md">
+        <div className="flex items-center justify-between p-6 border-b border-neutral-700/30 bg-black/90">
           <h2 className="text-xl font-bold text-white font-display flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-primary-orange" />
             Your Cart
@@ -109,7 +109,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
 
         {/* Footer */}
         {isLoggedIn && cartItems.length > 0 && (
-          <div className="mt-auto flex flex-col gap-4 border-t border-neutral-800/50 p-6 bg-black/80 backdrop-blur-md">
+          <div className="mt-auto flex flex-col gap-4 border-t border-neutral-800/50 p-6 bg-black/95">
             <div className="flex justify-between text-lg font-bold text-white">
               <span>Total</span>
               <span className="gradient-text-brand">
