@@ -18,6 +18,7 @@ import UserAvatar from './UserAvatar';
 import MyDownloadsModal from './MyDownloadsModal';
 import CheckoutModal from './CheckoutModal';
 import { API_URL } from '../config/api';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 interface NavigationProps {
   scrollY: number;
@@ -42,6 +43,7 @@ const Navigation: React.FC<NavigationProps> = ({
 }) => {
   const { isLoggedIn, cartItems, login, logout, cfxUserData } = useTebex();
   const { user: discordUser, isAuthenticated: isDiscordAuth, getDiscordAuthUrl, logout: discordLogout } = useAuth();
+  const { trackEvent } = useAnalytics();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -143,11 +145,81 @@ const Navigation: React.FC<NavigationProps> = ({
 
   const handleDiscordLogin = async () => {
     try {
+      // Track Discord login click
+      trackEvent('discord_login_clicked', {
+        eventData: {
+          is_authenticated: isDiscordAuth,
+          cfx_logged_in: isLoggedIn,
+        },
+      });
+
       const authUrl = await getDiscordAuthUrl();
       window.location.href = authUrl;
     } catch (error) {
       console.error('Discord login failed:', error);
     }
+  };
+
+  const handleDiscordLogout = () => {
+    // Track Discord logout
+    trackEvent('discord_logout_clicked', {
+      eventData: {
+        discord_username: discordUser?.discordUsername,
+      },
+    });
+
+    discordLogout();
+  };
+
+  const handleCFXLogin = () => {
+    // Track CFX login click
+    trackEvent('cfx_login_clicked');
+    login();
+  };
+
+  const handleLogout = () => {
+    // Track logout
+    trackEvent('logout_clicked', {
+      eventData: {
+        username: cfxUserData?.username,
+        had_discord: isDiscordAuth,
+      },
+    });
+
+    setIsDropdownOpen(false);
+    logout();
+  };
+
+  const handleMyDownloads = () => {
+    // Track downloads modal open
+    trackEvent('my_downloads_clicked');
+
+    setIsDropdownOpen(false);
+    setShowDownloadsModal(true);
+  };
+
+  const handleAdminAccess = () => {
+    // Track admin panel access
+    trackEvent('admin_access_clicked', {
+      eventData: {
+        discord_username: discordUser?.discordUsername,
+      },
+    });
+
+    setIsDropdownOpen(false);
+    navigate('/admin');
+  };
+
+  const handleCartClick = () => {
+    // Track cart icon click
+    trackEvent('cart_icon_clicked', {
+      eventData: {
+        cart_items: cartItems.length,
+      },
+    });
+
+    navigate('/cart');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -236,9 +308,9 @@ const Navigation: React.FC<NavigationProps> = ({
                         <div role="separator" className="-mx-1 my-1 h-px bg-zinc-800"></div>
                         
                         {/* Discord Item */}
-                        <div 
-                           role="menuitem" 
-                           onClick={!isDiscordAuth ? handleDiscordLogin : discordLogout}
+                        <div
+                           role="menuitem"
+                           onClick={!isDiscordAuth ? handleDiscordLogin : handleDiscordLogout}
                            className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                         >
                             {!isDiscordAuth ? (
@@ -258,10 +330,7 @@ const Navigation: React.FC<NavigationProps> = ({
                         {hasAvailableTokens && (
                           <div
                             role="menuitem"
-                            onClick={() => {
-                              setIsDropdownOpen(false);
-                              setShowDownloadsModal(true);
-                            }}
+                            onClick={handleMyDownloads}
                             className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                           >
                             <PackageIcon className="mr-2 h-4 w-4" />
@@ -283,15 +352,27 @@ const Navigation: React.FC<NavigationProps> = ({
                           Order History
                         </div>
 
+                        {/* Admin Panel - Only show for admin users */}
+                        {discordUser?.role === 'admin' && (
+                          <>
+                            <div role="separator" className="-mx-1 my-1 h-px bg-zinc-800"></div>
+                            <div
+                              role="menuitem"
+                              onClick={handleAdminAccess}
+                              className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-amber-500/10 text-amber-500 hover:text-amber-400"
+                            >
+                              <Settings className="mr-2 h-4 w-4" />
+                              Admin Panel
+                            </div>
+                          </>
+                        )}
+
                         <div role="separator" className="-mx-1 my-1 h-px bg-zinc-800"></div>
 
                         {/* Logout */}
-                        <div 
+                        <div
                           role="menuitem"
-                          onClick={() => {
-                            setIsDropdownOpen(false);
-                            logout();
-                          }}
+                          onClick={handleLogout}
                           className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-red-500/10 text-red-400 hover:text-red-300"
                         >
                           <LogOut className="mr-2 h-4 w-4" />
@@ -303,10 +384,7 @@ const Navigation: React.FC<NavigationProps> = ({
 
                   {/* Cart Button */}
                   <button
-                    onClick={() => {
-                        navigate('/cart');
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
+                    onClick={handleCartClick}
                     className="cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 border bg-background shadow-xs hover:bg-zinc-800 hover:text-zinc-100 border-zinc-800 bg-[#0f0f11] text-zinc-200 size-9 relative"
                   >
                     <ShoppingCart className="h-4 w-4" />
@@ -319,7 +397,7 @@ const Navigation: React.FC<NavigationProps> = ({
                 </>
               ) : (
                 <button
-                  onClick={login}
+                  onClick={handleCFXLogin}
                   className="fivem-signin-button"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="19" viewBox="0 0 48 48">

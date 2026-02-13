@@ -11,7 +11,8 @@ import {
   X,
   Download,
   BarChart3,
-  Users
+  Users,
+  TrendingUp
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -26,6 +27,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const menuItems = [
     { name: 'Painel', path: '/admin', icon: LayoutDashboard },
     { name: 'Estatísticas', path: '/admin/estatisticas', icon: BarChart3 },
+    { name: 'Analytics', path: '/admin/analytics', icon: TrendingUp },
     { name: 'Pedidos', path: '/admin/compras', icon: ShoppingCart },
     { name: 'Downloads', path: '/admin/downloads', icon: Download },
     { name: 'Utilizadores', path: '/admin/utilizadores', icon: Users },

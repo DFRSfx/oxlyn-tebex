@@ -10,8 +10,9 @@ import ordersRoutes from './routes/orders.js';
 import cfxRoutes from './routes/cfx.js';
 import documentationRoutes from './routes/documentation.js';
 import statisticsRoutes from './routes/statistics.js';
+import analyticsRoutes from './routes/analytics.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { rateLimiter } from './middleware/rateLimiter.js';
+import { rateLimiter, analyticsRateLimiter } from './middleware/rateLimiter.js';
 import { initializeDatabase } from './config/database.js';
 
 dotenv.config();
@@ -40,6 +41,9 @@ app.use(helmet({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Apply different rate limiters based on route
+app.use('/api/analytics', analyticsRateLimiter);
 app.use(rateLimiter);
 
 // Health check
@@ -54,6 +58,7 @@ app.use('/api/downloads', downloadRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/documentation', documentationRoutes);
 app.use('/api/statistics', statisticsRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api', cfxRoutes);
 
 // Error handling

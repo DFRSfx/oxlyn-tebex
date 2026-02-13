@@ -19,6 +19,37 @@ const HomePage: React.FC<HomePageProps> = ({
   openPackageDetails,
   handleDiscordRedirect,
 }) => {
+  // Deduplicate packages by base name, keeping the one with the lowest price
+  const deduplicatePackages = (pkgs: Package[]): Package[] => {
+    const packageGroups = new Map<string, Package[]>();
+
+    // Group packages by base name
+    pkgs.forEach(pkg => {
+      const baseName = pkg.name
+        .replace(/\s*\(OPEN-SOURCE\)/gi, '')
+        .replace(/\s*\(ESCROWED\)/gi, '')
+        .replace(/\s*\(Open Source\)/gi, '')
+        .replace(/\s*\(Escrow\)/gi, '')
+        .trim();
+
+      if (!packageGroups.has(baseName)) {
+        packageGroups.set(baseName, []);
+      }
+      packageGroups.get(baseName)!.push(pkg);
+    });
+
+    // For each group, select the package with the lowest price
+    const deduplicated: Package[] = [];
+    packageGroups.forEach((variants) => {
+      const lowestPricePackage = variants.reduce((min, current) =>
+        current.price < min.price ? current : min
+      );
+      deduplicated.push(lowestPricePackage);
+    });
+
+    return deduplicated;
+  };
+
   const features = [
     {
       icon: Clock,
@@ -130,8 +161,9 @@ const HomePage: React.FC<HomePageProps> = ({
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto" style={{ gridAutoRows: '1fr' }}>
-                {packages
-                  .filter(pkg => !pkg.description?.toLowerCase().includes('vanguard'))
+                {deduplicatePackages(
+                  packages.filter(pkg => !pkg.description?.toLowerCase().includes('vanguard'))
+                )
                   .slice(0, 6)
                   .map((pkg, index) => {
                     return (

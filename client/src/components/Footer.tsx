@@ -70,10 +70,10 @@ const Footer: React.FC<FooterProps> = ({
           <div>
             <h4 className="text-white font-bold text-lg mb-6 font-display">Support</h4>
             <ul className="space-y-4 text-white">
-              <li><button onClick={() => handleNavigation('/terms')} className="hover:text-red-400 transition-colors duration-300 text-left">Terms of Service</button></li>
-              <li><button onClick={() => handleNavigation('/privacy')} className="hover:text-red-400 transition-colors duration-300 text-left">Privacy Policy</button></li>
+              <li><button onClick={() => handleExternalLink('https://checkout.tebex.io/terms')} className="hover:text-red-400 transition-colors duration-300 text-left">Terms of Service</button></li>
+              <li><button onClick={() => handleExternalLink('https://www.tebex.io/terms-creator-agreement/privacy-policy')} className="hover:text-red-400 transition-colors duration-300 text-left">Privacy Policy</button></li>
+              <li><button onClick={() => handleExternalLink('https://checkout.tebex.io/impressum')} className="hover:text-red-400 transition-colors duration-300 text-left">Impressum</button></li>
               <li><button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); window.open('https://docs.oxlynsoftware.com', '_blank'); }} className="hover:text-red-400 transition-colors duration-300 text-left">Documentation</button></li>
-              <li><button onClick={() => handleNavigation('/faq')} className="hover:text-red-400 transition-colors duration-300 text-left">FAQ</button></li>
             </ul>
           </div>
         </div>
@@ -171,13 +171,11 @@ const Footer: React.FC<FooterProps> = ({
 
           {/* Legal Links */}
           <div className="flex flex-wrap justify-center gap-6 mb-10 text-sm text-gray-400">
-            <button onClick={() => handleNavigation('/terms')} className="hover:text-white transition-colors hover:underline">Terms & Conditions</button>
+            <button onClick={() => handleExternalLink('https://checkout.tebex.io/terms')} className="hover:text-white transition-colors hover:underline">Terms & Conditions</button>
             <span className="text-gray-600">•</span>
-            <button onClick={() => handleNavigation('/privacy')} className="hover:text-white transition-colors hover:underline">Privacy Policy</button>
+            <button onClick={() => handleExternalLink('https://www.tebex.io/terms-creator-agreement/privacy-policy')} className="hover:text-white transition-colors hover:underline">Privacy Policy</button>
             <span className="text-gray-600">•</span>
-            <button onClick={() => handleNavigation('/impressum')} className="hover:text-white transition-colors hover:underline">Impressum</button>
-            <span className="text-gray-600">•</span>
-            <button onClick={() => handleNavigation('/refunds')} className="hover:text-white transition-colors hover:underline">Refund Policy</button>
+            <button onClick={() => handleExternalLink('https://checkout.tebex.io/impressum')} className="hover:text-white transition-colors hover:underline">Impressum</button>
           </div>
 
           {/* Tebex Section - Bottom */}

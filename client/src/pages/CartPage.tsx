@@ -1,35 +1,119 @@
-import React, { useState } from 'react';
-import { ShoppingCart, Trash2, Lock, Shield, Headphones, Star, Crown, ArrowRight, Zap, Tag } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShoppingCart, Trash2, Shield, Zap, Star, Tag, AlertTriangle, Crown, ArrowRight, X } from 'lucide-react';
 import { useTebex } from '../context/TebexContext';
+import { useAuth } from '../context/AuthContext';
 import { formatCategoryName } from '../utils/helpers';
 import { useNavigate } from 'react-router-dom';
+import { tebexService } from '../services/tebexService';
+import { mapTebexPackageToPackage } from '../utils/packageMapper';
+import { Package } from '../types';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 const CartPage: React.FC = () => {
   const { cartItems, removeFromCart, proceedToCheckout, isLoggedIn, applyCoupon, removeCoupon, appliedCoupon } = useTebex();
+  const { isAuthenticated: isDiscordConnected } = useAuth();
+  const { trackEvent } = useAnalytics();
   const navigate = useNavigate();
+
+  // -- Logic & State (Preserved) --
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
   const [couponSuccess, setCouponSuccess] = useState('');
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
   const [isRemovingCoupon, setIsRemovingCoupon] = useState(false);
+  const [featuredScripts, setFeaturedScripts] = useState<Package[]>([]);
+
+  // Deduplicate packages by base name, keeping the one with the lowest price
+  const deduplicatePackages = (pkgs: Package[]): Package[] => {
+    const packageGroups = new Map<string, Package[]>();
+
+    // Group packages by base name
+    pkgs.forEach(pkg => {
+      const baseName = pkg.name
+        .replace(/\s*\(OPEN-SOURCE\)/gi, '')
+        .replace(/\s*\(ESCROWED\)/gi, '')
+        .replace(/\s*\(Open Source\)/gi, '')
+        .replace(/\s*\(Escrow\)/gi, '')
+        .trim();
+
+      if (!packageGroups.has(baseName)) {
+        packageGroups.set(baseName, []);
+      }
+      packageGroups.get(baseName)!.push(pkg);
+    });
+
+    // For each group, select the package with the lowest price
+    const deduplicated: Package[] = [];
+    packageGroups.forEach((variants) => {
+      const lowestPricePackage = variants.reduce((min, current) =>
+        current.price < min.price ? current : min
+      );
+      deduplicated.push(lowestPricePackage);
+    });
+
+    return deduplicated;
+  };
+
+  // Track cart view when page loads
+  useEffect(() => {
+    if (isLoggedIn && cartItems.length > 0) {
+      trackEvent('cart_viewed', {
+        eventData: {
+          items_count: cartItems.length,
+          total_value: cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0),
+          has_coupon: !!appliedCoupon,
+        },
+      });
+    }
+  }, []); // Only on mount
+
+  // Fetch featured scripts from Tebex API
+  useEffect(() => {
+    const fetchFeaturedScripts = async () => {
+      try {
+        const tebexPackages = await tebexService.fetchPackages();
+        const mappedPackages = tebexPackages.map(mapTebexPackageToPackage);
+
+        // Apply same filtering logic as ScriptsPage
+        const filteredPackages = deduplicatePackages(
+          mappedPackages.filter(pkg => !pkg.description?.toLowerCase().includes('vanguard'))
+        );
+
+        // Filter out packages that are already in cart
+        const cartPackageIds = cartItems.map(item => String(item.id));
+        const availablePackages = filteredPackages.filter(
+          pkg => !cartPackageIds.includes(String(pkg.id))
+        );
+
+        // Get first 3 packages as featured
+        setFeaturedScripts(availablePackages.slice(0, 3));
+      } catch (error) {
+        console.error('Failed to fetch featured scripts:', error);
+      }
+    };
+    fetchFeaturedScripts();
+  }, [cartItems]);
 
   const totalItems = cartItems.reduce((sum, item) => sum + item.qty, 0);
 
-  // Calculate with 50% discount always active
-  const originalPrice = cartItems.reduce((sum, item) => sum + ((item.price * 2) * item.qty), 0); // Price displayed is already 50% off
+  // Current price from cart (includes coupon if Tebex applied it)
   const currentPrice = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const launchDiscountAmount = originalPrice - currentPrice;
 
-  // Coupon discount (for display only - prices from Tebex are already discounted)
+  // Coupon Logic
   const couponDiscountAmount = appliedCoupon?.discountAmount || 0;
-  // Total is just currentPrice (Tebex already applied the coupon to item prices)
-  const totalPrice = currentPrice;
 
-  // Calculate the cart price BEFORE the coupon was applied
-  // Since Tebex already applied the coupon: priceBeforeCoupon = currentPrice + discount
+  // Price before coupon - this is the base for our calculations
   const priceBeforeCoupon = currentPrice + Math.abs(couponDiscountAmount);
 
-  // Calculate the actual coupon percentage (e.g., 10% for OXLYN-10)
+  // Original price is calculated from priceBeforeCoupon (before coupon) so it stays constant
+  const originalPrice = priceBeforeCoupon * 2;
+
+  // Launch discount is 50% off the original price (stays constant)
+  const launchDiscountAmount = originalPrice - priceBeforeCoupon;
+
+  // Total price includes coupon discount
+  const totalPrice = currentPrice;
+  
   const actualCouponPercentage = priceBeforeCoupon > 0 && Math.abs(couponDiscountAmount) > 0
     ? Math.round((Math.abs(couponDiscountAmount) / priceBeforeCoupon) * 100)
     : 0;
@@ -37,398 +121,347 @@ const CartPage: React.FC = () => {
   const currency = cartItems[0]?.currency || 'EUR';
   const currencySymbol = currency === 'EUR' ? '€' : '$';
 
+  // Handlers
   const handleApplyCoupon = async () => {
     setCouponError('');
     setCouponSuccess('');
     setIsApplyingCoupon(true);
-
     const result = await applyCoupon(couponCode);
-
     setIsApplyingCoupon(false);
-
     if (result.success) {
-      setCouponSuccess('✅ Coupon applied successfully!');
+      setCouponSuccess('Coupon applied!');
       setCouponCode('');
       setTimeout(() => setCouponSuccess(''), 3000);
+
+      // Track successful coupon application
+      trackEvent('coupon_applied', {
+        eventData: {
+          coupon_code: couponCode.toUpperCase(),
+          discount_amount: Math.abs(appliedCoupon?.discountAmount || 0),
+        },
+      });
     } else {
-      setCouponError(result.error || 'Invalid coupon code');
+      setCouponError(result.error || 'Invalid code');
+
+      // Track failed coupon attempt
+      trackEvent('coupon_failed', {
+        eventData: {
+          coupon_code: couponCode.toUpperCase(),
+          error: result.error,
+        },
+      });
     }
   };
 
   const handleRemoveCoupon = async () => {
-    setCouponError('');
-    setCouponSuccess('');
     setIsRemovingCoupon(true);
-
-    const result = await removeCoupon();
-
+    await removeCoupon();
     setIsRemovingCoupon(false);
 
-    if (result.success) {
-      setCouponSuccess('✅ Coupon removed successfully!');
-      setTimeout(() => setCouponSuccess(''), 3000);
-    } else {
-      setCouponError(result.error || 'Failed to remove coupon');
-    }
+    // Track coupon removal
+    trackEvent('coupon_removed', {
+      eventData: {
+        coupon_code: appliedCoupon?.code,
+      },
+    });
+  };
+
+  const handleRemoveItem = async (item: any) => {
+    await removeFromCart(item.id);
+
+    // Track item removal
+    trackEvent('cart_item_removed', {
+      packageName: item.name,
+      eventData: {
+        price: item.price,
+        quantity: item.qty,
+      },
+    });
   };
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-black text-white pt-32 pb-20 relative z-10">
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="flex flex-col items-center justify-center py-20">
-            <ShoppingCart className="w-20 h-20 text-gray-400 mb-6" />
-            <h2 className="text-3xl font-bold mb-4 text-white">Please Login</h2>
-            <p className="text-gray-300 text-lg">Login with FiveM to view your cart</p>
-          </div>
-        </div>
+      <div className="min-h-screen bg-[#050505] text-white pt-32 pb-20 relative z-10 flex flex-col items-center justify-center">
+         <div className="p-8 bg-zinc-900 border border-zinc-800 rounded-2xl text-center max-w-md w-full">
+            <ShoppingCart className="w-16 h-16 text-zinc-600 mx-auto mb-6" />
+            <h2 className="text-2xl font-bold mb-2">Please Login</h2>
+            <p className="text-zinc-400 mb-6">You need to be logged in with FiveM to view your cart.</p>
+            <button className="w-full py-3 bg-white text-black font-bold rounded hover:bg-zinc-200 transition-colors">
+                Login with FiveM
+            </button>
+         </div>
       </div>
     );
   }
 
   return (
-    <section className="min-h-screen bg-black text-white pt-32 pb-20 relative z-10">
-      <div className="max-w-7xl mx-auto px-6 relative z-10">
-        <div className={`grid gap-8 ${cartItems.length > 0 ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
-          {/* Left Column - Cart Items */}
-          <div className={cartItems.length > 0 ? 'lg:col-span-2' : 'lg:col-span-1'}>
-            <div className="mb-8">
-              <h1 className="text-4xl md:text-5xl font-black text-white mb-2 flex items-center gap-3">
-                <ShoppingCart className="w-10 h-10 gradient-text-brand" />
-                Shopping Cart
-              </h1>
-              <span className="text-gray-300 text-lg">
-                {totalItems} {totalItems === 1 ? 'item' : 'items'} in your cart
-              </span>
-            </div>
-
-            {cartItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 px-8 bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl ">
-                <div className="relative mb-8">
-                  <div className="absolute inset-0 bg-gradient-to-r from-orange-500/20 to-orange-600/20 blur-3xl rounded-full"></div>
-                  <ShoppingCart className="w-24 h-24 text-orange-400 relative z-10" strokeWidth={1.5} />
-                </div>
-
-                <h2 className="text-4xl font-black text-white mb-3 text-center">Your Cart is Empty</h2>
-                <div className="text-xl font-semibold gradient-text-brand mb-4 text-center">
-                  Ready to build something amazing?
-                </div>
-                <p className="text-gray-300 text-center max-w-2xl mb-8 leading-relaxed">
-                  Discover our premium FiveM scripts and transform your server into an extraordinary gaming experience. Professional quality, instant delivery, and lifetime support included.
-                </p>
-
-                <button
-                  onClick={() => navigate('/')}
-                  className="group flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold text-lg rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg shadow-orange-500/30 mb-12"
-                >
-                  Explore Premium Scripts
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl">
-                  <div className="flex flex-col items-center gap-2 p-4 bg-gray-700/30 rounded-xl border border-gray-600/30 hover:border-orange-500/30 transition-all duration-300">
-                    <Zap className="w-8 h-8 text-orange-400 mb-1" />
-                    <span className="text-sm font-semibold text-white text-center">Instant Delivery</span>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 p-4 bg-gray-700/30 rounded-xl border border-gray-600/30 hover:border-orange-500/30 transition-all duration-300">
-                    <Shield className="w-8 h-8 text-orange-400 mb-1" />
-                    <span className="text-sm font-semibold text-white text-center">Lifetime Updates</span>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 p-4 bg-gray-700/30 rounded-xl border border-gray-600/30 hover:border-orange-500/30 transition-all duration-300">
-                    <Headphones className="w-8 h-8 text-orange-400 mb-1" />
-                    <span className="text-sm font-semibold text-white text-center">24/7 Support</span>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 p-4 bg-gray-700/30 rounded-xl border border-gray-600/30 hover:border-orange-500/30 transition-all duration-300">
-                    <Star className="w-8 h-8 text-orange-400 mb-1" />
-                    <span className="text-sm font-semibold text-white text-center">Premium Quality</span>
-                  </div>
-
-                
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Cart Items */}
-                <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl overflow-hidden ">
-                  {cartItems.map((item, index) => {
+    <section className="min-h-screen bg-[#050505] text-white pt-32 pb-20 relative z-10 font-sans selection:bg-orange-500/30">
+      <div className="max-w-[1400px] mx-auto px-6">
         
-                  return (
-                    <div
-                      key={item.id}
-                      className={`p-6 flex gap-4 hover:bg-white/5 transition-all duration-300 ${
-                        index !== cartItems.length - 1 ? 'border-b border-gray-800/50' : ''
-                      }`}
-                    >
-                      {/* Product Image */}
-                      <div className="w-40 h-24 shrink-0 rounded-xl overflow-hidden bg-gray-700/50 border border-gray-600/50">
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-
-                      {/* Product Info */}
-                      <div className="flex-1 flex flex-col justify-between">
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">{item.name}</h3>
-                          {item.category && (
-                            <span className="inline-block text-xs px-3 py-1 rounded-full bg-gray-700/60 text-gray-200 border border-gray-600/40">
-                              {formatCategoryName(item.category.name)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-sm text-gray-300">Quantity: {item.qty}</span>
-                        </div>
-                      </div>
-
-                      {/* Price & Remove */}
-                      <div className="flex flex-col items-end justify-between">
-                        <div className="text-right">
-                          <div className="text-sm text-gray-400 line-through mb-1">
-                            {currencySymbol}{((item.price * 2) * item.qty).toFixed(2)}
-                          </div>
-                          <div className="text-2xl font-bold gradient-text-brand flex items-center gap-2">
-                            {currencySymbol}{(item.price * item.qty).toFixed(2)}
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full border border-green-500/30">
-                                -50%
-                              </span>
-                              {appliedCoupon && actualCouponPercentage > 0 && (
-                                <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full border border-blue-500/30 font-bold">
-                                  -{actualCouponPercentage}%
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-300 border border-gray-600/50 hover:border-red-500/50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                </div>
-
-                {/* Subscription Promo */}
-                <div className="bg-gradient-to-r from-orange-900/85 via-orange-800/85 to-orange-900/85 border border-orange-500/40 rounded-2xl p-6  relative overflow-hidden">
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <Crown className="w-6 h-6 text-yellow-400" />
-                        Subscribe & Save with <span className="gradient-text-brand">OXLYN</span>
-                      </h2>
-                      <span className="px-3 py-1 bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-xs font-bold rounded-full uppercase tracking-wider">
-                        Coming Soon
-                      </span>
-                    </div>
-                    <p className="text-gray-300">
-                      Get access to all our premium scripts with our subscription service.
-                      <span className="text-yellow-400 font-semibold"> Save up to 85%</span> compared to individual purchases, with new scripts included every month.
-                    </p>
-                  </div>
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl"></div>
-                </div>
-              </div>
+        {/* Header */}
+        <div className="mb-8 flex items-end justify-between">
+            <div>
+                <h1 className="text-3xl font-bold text-white mb-1">Shopping Cart</h1>
+                <p className="text-zinc-500">{totalItems} {totalItems === 1 ? 'item' : 'items'} ready for checkout</p>
+            </div>
+            {cartItems.length > 0 && (
+                <button onClick={() => navigate('/scripts')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-1">
+                    Continue Shopping <ArrowRight className="w-4 h-4" />
+                </button>
             )}
-          </div>
+        </div>
 
-          {/* Right Column - Order Summary */}
-          {cartItems.length > 0 && (
-          <div className="lg:col-span-1">
-            <div className="sticky top-32">
-              <div className="bg-gradient-to-br from-gray-800/70 to-gray-900/70 border border-gray-700/60 rounded-2xl p-6 ">
-                <h3 className="text-2xl font-bold text-white mb-6">Order Summary</h3>
-
-                {/* Coupon Code Input */}
-                <div className="mb-6">
-                  {!appliedCoupon ? (
-                    <>
-                      <label className="text-sm text-gray-300 mb-2 block flex items-center gap-2">
-                        <Tag className="w-4 h-4" />
-                        Have a coupon?
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={couponCode}
-                          onChange={(e) => {
-                            setCouponCode(e.target.value.toUpperCase());
-                            setCouponError('');
-                          }}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && couponCode.trim()) {
-                              handleApplyCoupon();
-                            }
-                          }}
-                          placeholder="ENTER CODE"
-                          disabled={isApplyingCoupon}
-                          className="flex-1 bg-gray-700/50 border border-gray-600/50 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50 transition-colors disabled:opacity-50"
+        {cartItems.length === 0 ? (
+           <div className="flex flex-col items-center justify-center py-24 bg-[#0a0a0a] border border-zinc-800 rounded-xl">
+             <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-6">
+                <ShoppingCart className="w-8 h-8 text-zinc-500" />
+             </div>
+             <h2 className="text-2xl font-bold text-white mb-2">Your cart is empty</h2>
+             <p className="text-zinc-500 max-w-md text-center mb-8">
+               Looks like you haven't added any scripts yet.
+             </p>
+             <button
+               onClick={() => navigate('/scripts')}
+               className="px-8 py-3 bg-white text-black font-bold rounded hover:scale-105 transition-transform"
+             >
+               Browse Scripts
+             </button>
+           </div>
+        ) : (
+          <div className="grid lg:grid-cols-12 gap-8">
+            {/* Left Column - Cart Items */}
+            <div className="lg:col-span-8 space-y-6">
+               <div className="space-y-4">
+               {cartItems.map((item) => (
+                 <div key={item.id} className="bg-[#0a0a0a] border border-zinc-800 rounded-xl p-4 flex items-center gap-6 group hover:border-zinc-700 transition-colors relative overflow-hidden">
+                    {/* Image */}
+                    <div className="w-32 aspect-video bg-zinc-900 rounded-lg overflow-hidden shrink-0 border border-zinc-800">
+                        <img 
+                            src={item.image} 
+                            alt={item.name} 
+                            className="w-full h-full object-cover"
                         />
-                        <button
-                          onClick={handleApplyCoupon}
-                          disabled={isApplyingCoupon || !couponCode.trim()}
-                          className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/50 text-orange-400 rounded-lg transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed min-w-[100px]"
-                        >
-                          {isApplyingCoupon ? 'Applying...' : 'Apply'}
-                        </button>
-                      </div>
-                      {couponError && (
-                        <p className="text-red-400 text-xs mt-2">❌ {couponError}</p>
-                      )}
-                      {couponSuccess && (
-                        <p className="text-green-400 text-xs mt-2">{couponSuccess}</p>
-                      )}
-                    </>
-                  ) : (
-                    <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/30 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="bg-blue-500/20 p-2 rounded-lg">
-                            <Tag className="w-4 h-4 text-blue-400" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-blue-400">Coupon Applied</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-white font-bold">{appliedCoupon.code}</span>
-                              {actualCouponPercentage > 0 && (
-                                <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full border border-blue-500/30 font-bold">
-                                  -{actualCouponPercentage}%
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-1">
+                            <h3 className="text-lg font-bold text-white truncate">{item.name}</h3>
+                            <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] uppercase font-bold rounded border border-zinc-700">
+                                {item.category ? formatCategoryName(item.category.name) : 'Script'}
+                            </span>
+                        </div>
+                        <p className="text-zinc-500 text-sm mb-2">Quantity: {item.qty}</p>
+                        
+                        {/* Discount Badge */}
+                        <div className="flex gap-2">
+                             <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-900/50">
+                                50% Launch Off
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Price & Action */}
+                    <div className="text-right shrink-0">
+                        <div className="text-xs text-zinc-500 line-through mb-0.5">
+                            {currencySymbol}{((item.price * 2) * item.qty).toFixed(2)}
+                        </div>
+                        <div className="text-xl font-bold text-white mb-2">
+                            {currencySymbol}{(item.price * item.qty).toFixed(2)}
                         </div>
                         <button
-                          onClick={handleRemoveCoupon}
-                          disabled={isRemovingCoupon}
-                          className="text-xs text-red-400 hover:text-red-300 underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => handleRemoveItem(item)}
+                            className="text-zinc-500 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-full"
+                            title="Remove item"
                         >
-                          {isRemovingCoupon ? 'Removing...' : 'Remove'}
+                            <Trash2 className="w-5 h-5" />
                         </button>
-                      </div>
-                      <div className="text-xs text-blue-300 bg-blue-500/10 px-3 py-1.5 rounded border border-blue-500/20">
-                        💰 Extra {currencySymbol}{Math.abs(couponDiscountAmount).toFixed(2)} discount applied
-                      </div>
                     </div>
-                  )}
-                </div>
+                 </div>
+               ))}
+               </div>
 
-                <div className="space-y-3 mb-6">
-                  {/* Original Price */}
-                  <div className="flex justify-between text-lg">
-                    <span className="text-gray-300">Original Price</span>
-                    <span className="text-white font-semibold">
-                      {currencySymbol}{originalPrice.toFixed(2)}
-                    </span>
+               {/* Subscription Promo Box */}
+               <div className="bg-gradient-to-r from-orange-900/20 via-orange-800/20 to-orange-900/20 border border-orange-500/20 rounded-xl p-6 relative overflow-hidden group">
+                  <div className="relative z-10 flex items-start justify-between">
+                     <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <Crown className="w-5 h-5 text-orange-500" />
+                            <h3 className="font-bold text-white">Subscribe & Save</h3>
+                            <span className="text-[10px] bg-orange-500 text-black font-bold px-2 py-0.5 rounded-full">SOON</span>
+                        </div>
+                        <p className="text-sm text-zinc-400 max-w-lg">
+                           Get access to all premium scripts for one monthly price. Save up to <span className="text-orange-400">85%</span> compared to individual purchases.
+                        </p>
+                     </div>
                   </div>
+               </div>
+            </div>
 
-                  {/* Launch Discount */}
-                  <div className="flex justify-between text-green-400 bg-green-500/10 px-3 py-2 rounded-lg border border-green-500/20">
-                    <span className="font-semibold flex items-center gap-2">
-                      <Star className="w-4 h-4" />
-                      50% Launch Discount
-                    </span>
-                    <span className="font-bold">-{currencySymbol}{launchDiscountAmount.toFixed(2)}</span>
-                  </div>
-
-                  {/* Coupon Discount */}
-                  {appliedCoupon && Math.abs(couponDiscountAmount) > 0 && (
-                    <div className="flex justify-between text-blue-400 bg-blue-500/10 px-3 py-2 rounded-lg border border-blue-500/20">
-                      <span className="font-semibold flex items-center gap-2">
-                        <Tag className="w-4 h-4" />
-                        Coupon: {appliedCoupon.code}
-                      </span>
-                      <span className="font-bold">-{currencySymbol}{Math.abs(couponDiscountAmount).toFixed(2)}</span>
+            {/* Right Column - Summary & Coupons */}
+            <div className="lg:col-span-4">
+                <div className="bg-[#0a0a0a] border border-zinc-800 rounded-xl p-6 sticky top-28">
+                    <h3 className="text-xl font-bold text-white mb-6">Order Summary</h3>
+                    
+                    {/* Coupon Input */}
+                    <div className="mb-6">
+                        {!appliedCoupon ? (
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={couponCode}
+                                    onChange={(e) => {
+                                        setCouponCode(e.target.value.toUpperCase());
+                                        setCouponError('');
+                                    }}
+                                    placeholder="Coupon Code"
+                                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-600"
+                                />
+                                <button
+                                    onClick={handleApplyCoupon}
+                                    disabled={isApplyingCoupon || !couponCode.trim()}
+                                    className="px-3 py-2 bg-zinc-800 text-white text-sm font-medium rounded hover:bg-zinc-700 disabled:opacity-50"
+                                >
+                                    {isApplyingCoupon ? '...' : 'Apply'}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="bg-blue-500/10 border border-blue-500/20 rounded p-3 flex items-center justify-between">
+                                <div>
+                                    <div className="text-xs text-blue-400 font-bold flex items-center gap-1">
+                                        <Tag className="w-3 h-3" /> {appliedCoupon.code}
+                                    </div>
+                                    <div className="text-[10px] text-blue-300/70">
+                                        Discount applied
+                                    </div>
+                                </div>
+                                <button onClick={handleRemoveCoupon} disabled={isRemovingCoupon} className="text-zinc-400 hover:text-white">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
+                        {couponError && <p className="text-red-500 text-xs mt-2">{couponError}</p>}
+                        {couponSuccess && <p className="text-green-500 text-xs mt-2">{couponSuccess}</p>}
                     </div>
-                  )}
 
-                  {/* Total */}
-                  <div className="border-t border-gray-600/50 pt-4 flex justify-between text-xl font-bold">
-                    <span className="text-white">Total</span>
-                    <span className="gradient-text-brand text-2xl">
-                      {currencySymbol}{totalPrice.toFixed(2)}
-                    </span>
-                  </div>
+                    {/* Breakdown */}
+                    <div className="space-y-3 mb-6">
+                        <div className="flex justify-between text-zinc-400 text-sm">
+                            <span>Original Price:</span>
+                            <span className="line-through">{currencySymbol}{originalPrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-green-500 text-sm">
+                            <span className="flex items-center gap-1"><Star className="w-3 h-3" /> Launch Savings:</span>
+                            <span>-{currencySymbol}{launchDiscountAmount.toFixed(2)}</span>
+                        </div>
+                        {appliedCoupon && (
+                            <div className="flex justify-between text-blue-500 text-sm">
+                                <span>Coupon ({actualCouponPercentage}%):</span>
+                                <span>-{currencySymbol}{Math.abs(couponDiscountAmount).toFixed(2)}</span>
+                            </div>
+                        )}
+                        <div className="border-t border-zinc-800 pt-3 flex justify-between items-end">
+                            <span className="text-white font-medium">Total:</span>
+                            <span className="text-2xl font-bold text-white">{currencySymbol}{totalPrice.toFixed(2)}</span>
+                        </div>
+                        
+                        {/* Savings Calculation Banner */}
+                        <div className="text-xs text-center text-green-500/80 bg-green-500/5 border border-green-500/10 py-2 rounded">
+                            You are saving <span className="font-bold">{currencySymbol}{(originalPrice - totalPrice).toFixed(2)}</span> on this order!
+                        </div>
+                    </div>
 
-                  {/* Savings Message */}
-                  <div className="text-xs text-center text-green-400 font-semibold bg-green-500/5 py-2 rounded-lg">
-                    🎉 You're saving {currencySymbol}{(launchDiscountAmount + Math.abs(couponDiscountAmount)).toFixed(2)} with this order!
-                  </div>
+                    {/* Discord Warning - Only show if NOT connected */}
+                    {!isDiscordConnected && (
+                      <div className="bg-[#1a1600] border border-yellow-900/50 rounded-lg p-4 mb-6 flex gap-3">
+                          <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
+                          <div>
+                              <p className="text-yellow-500 text-sm font-bold mb-0.5">Discord connection required</p>
+                              <p className="text-yellow-500/70 text-xs">Connect your Discord account to proceed with checkout.</p>
+                          </div>
+                      </div>
+                    )}
+
+                    <button
+                        onClick={proceedToCheckout}
+                        disabled={!isDiscordConnected}
+                        className="w-full py-3.5 bg-white text-black font-bold rounded hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2 mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                         {!isDiscordConnected ? (
+                           <>
+                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+                             Connect Discord to Checkout
+                           </>
+                         ) : (
+                           <>
+                             <ShoppingCart className="w-5 h-5" />
+                             Proceed to Checkout
+                           </>
+                         )}
+                    </button>
+
+                    {/* Image from User Request */}
+                    <div className="mb-4">
+                        <img src="https://i.imgur.com/1oDMbml.png" alt="Payment Methods" className="w-full opacity-80" />
+                    </div>
+
+                     <div className="text-center">
+                        <p className="text-[10px] text-zinc-600">Powered by <span className="font-bold text-zinc-500">TEBEX</span></p>
+                    </div>
                 </div>
 
-                {cartItems.length > 0 && (
-                  <button
-                    onClick={proceedToCheckout}
-                    className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold text-lg rounded-xl transition-all duration-300 transform hover:scale-105 mb-6"
-                  >
-                    <Lock className="w-5 h-5" />
-                    Secure Checkout
-                  </button>
-                )}
-
-                {/* Trust Badges - Compact Grid */}
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="flex flex-col items-center gap-2 text-center bg-gradient-to-br from-orange-500/10 to-orange-600/10 p-3 rounded-xl border border-orange-500/20 hover:border-orange-500/40 transition-all duration-300">
-                    <Zap className="w-6 h-6 text-orange-400" />
-                    <div className="text-xs font-semibold text-white">Instant Delivery</div>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 text-center bg-gradient-to-br from-blue-500/10 to-blue-600/10 p-3 rounded-xl border border-blue-500/20 hover:border-blue-500/40 transition-all duration-300">
-                    <Shield className="w-6 h-6 text-blue-400" />
-                    <div className="text-xs font-semibold text-white">Secure Payment</div>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 text-center bg-gradient-to-br from-purple-500/10 to-purple-600/10 p-3 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all duration-300">
-                    <Headphones className="w-6 h-6 text-purple-400" />
-                    <div className="text-xs font-semibold text-white">24/7 Support</div>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 text-center bg-gradient-to-br from-yellow-500/10 to-yellow-600/10 p-3 rounded-xl border border-yellow-500/20 hover:border-yellow-500/40 transition-all duration-300">
-                    <Star className="w-6 h-6 text-yellow-400" />
-                    <div className="text-xs font-semibold text-white">Premium Quality</div>
-                  </div>
+                {/* Trust Badges Mini */}
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                    <div className="bg-[#0a0a0a] border border-zinc-800 rounded p-2 text-center">
+                        <Zap className="w-4 h-4 text-zinc-500 mx-auto mb-1" />
+                        <p className="text-[10px] text-zinc-400">Instant Delivery</p>
+                    </div>
+                    <div className="bg-[#0a0a0a] border border-zinc-800 rounded p-2 text-center">
+                        <Shield className="w-4 h-4 text-zinc-500 mx-auto mb-1" />
+                        <p className="text-[10px] text-zinc-400">Secure Payment</p>
+                    </div>
                 </div>
-
-                {/* Payment Methods */}
-                <div className="mb-6">
-                  <img
-                    src="https://i.imgur.com/1oDMbml.png"
-                    alt="Payment Methods"
-                    className="w-full rounded-lg"
-                  />
-                  <div className="text-center text-sm text-gray-300 mt-2">
-                    and many more payment methods
-                  </div>
-                </div>
-
-                {/* Tebex Badge */}
-                <a
-                  href="https://www.tebex.io/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm text-gray-300 hover:text-white transition-colors mb-4"
-                >
-                  Powered by Tebex
-                </a>
-
-                <div className="text-xs text-gray-400 text-center leading-relaxed">
-                  Our checkout process is owned & operated by Tebex Limited, who handle product fulfillment, billing support and refunds.
-                </div>
-              </div>
             </div>
           </div>
-          )}
-        </div>
+        )}
+
+        {/* "You Might Also Like" Section - Real Scripts from API */}
+        {featuredScripts.length > 0 && (
+          <div className="mt-24 text-center">
+              <h2 className="text-2xl font-bold text-white mb-2">You might also like</h2>
+              <p className="text-zinc-500 mb-8">Check out our featured scripts</p>
+
+              <div className="grid md:grid-cols-3 gap-6">
+                   {featuredScripts.map((script) => (
+                      <div key={script.id} className="bg-[#0a0a0a] border border-zinc-800 rounded-xl overflow-hidden group hover:border-zinc-600 transition-all">
+                          <div className="aspect-video bg-zinc-900 relative">
+                               <img
+                                 src={script.image}
+                                 alt={script.name}
+                                 className="w-full h-full object-cover"
+                               />
+                          </div>
+                          <div className="p-5 text-left">
+                              <h3 className="text-lg font-bold text-white mb-1 truncate">{script.name}</h3>
+                              <p className="text-sm text-zinc-500 mb-4">€{script.price.toFixed(2)}</p>
+                              <div className="flex items-center justify-between gap-2">
+                                  <button
+                                    onClick={() => {
+                                      const slug = script.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                                      navigate(`/product/${slug}`, { state: { package: script } });
+                                    }}
+                                    className="flex-1 text-xs font-bold bg-zinc-900 text-zinc-300 border border-zinc-800 px-3 py-2 rounded hover:text-white hover:border-zinc-600"
+                                  >
+                                      View Details
+                                  </button>
+                              </div>
+                          </div>
+                      </div>
+                   ))}
+              </div>
+          </div>
+        )}
+
       </div>
     </section>
   );

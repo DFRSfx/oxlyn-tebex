@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { tebexService, BasketData, CartItem } from '../services/tebexService';
 import { API_URL } from '../config/api';
+import { getAnalytics } from '../services/analytics/AnalyticsSDK';
 
 interface CFXUserData {
   username: string;
@@ -393,6 +394,21 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
     }
 
     try {
+      // Track checkout start for each item in cart
+      const analytics = getAnalytics();
+      if (analytics) {
+        cartItems.forEach(item => {
+          analytics.trackEvent('checkout_start', {
+            packageName: item.name,
+            eventData: {
+              price: item.price,
+              quantity: item.qty,
+              total: item.price * item.qty,
+            },
+          });
+        });
+      }
+
       const checkoutUrl = await tebexService.getCheckoutUrl(basketIdent);
       if (checkoutUrl) {
         setCheckoutUrl(checkoutUrl);

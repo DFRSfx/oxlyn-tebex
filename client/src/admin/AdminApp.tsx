@@ -6,6 +6,7 @@ import OrdersList from './pages/OrdersList';
 import DownloadTokensManager from './pages/DownloadTokensManager';
 import StatisticsPage from './pages/StatisticsPage';
 import UsersAndActivityPage from './pages/UsersAndActivityPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 export default function AdminApp() {
   const { user, isAuthenticated } = useAuth();
@@ -38,6 +39,7 @@ export default function AdminApp() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/estatisticas" element={<StatisticsPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/compras" element={<OrdersList />} />
         <Route path="/downloads" element={<DownloadTokensManager />} />
         <Route path="/utilizadores" element={<UsersAndActivityPage />} />

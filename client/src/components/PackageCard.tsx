@@ -4,6 +4,7 @@ import { Package } from '../types';
 import { useTebex } from '../context/TebexContext';
 import { formatCategoryName } from '../utils/helpers';
 import { API_URL } from '../config/api';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 interface PackageCardProps {
   package: Package;
@@ -14,6 +15,7 @@ interface PackageCardProps {
 
 const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoaded, delay }) => {
   const { isLoggedIn, addToCart, isInCart, login } = useTebex();
+  const { trackCartAdd } = useAnalytics();
   const [isAdding, setIsAdding] = useState(false);
   const [bgImageIndex, setBgImageIndex] = useState(0);
 
@@ -33,8 +35,11 @@ const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoad
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.stopPropagation();
     console.log(`📊 [STATS] User clicked "Add to Cart" for package: ${pkg.name}`);
-    
-    // Record to database
+
+    // Track with analytics SDK
+    trackCartAdd(pkg.name, pkg.price);
+
+    // Record to database (legacy stats)
     try {
       const recordResponse = await fetch(`${API_URL}/orders/stats/record-cart`, {
         method: 'POST',
@@ -50,7 +55,7 @@ const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoad
     } catch (error) {
       console.error(`❌ [DB] Failed to record add to cart:`, error);
     }
-    
+
     if (pkg.tebexPackageId) {
       setIsAdding(true);
       await addToCart({

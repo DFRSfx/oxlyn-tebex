@@ -6,6 +6,7 @@ import { useTebex } from '../context/TebexContext';
 import { useDocumentation } from '../hooks/useDocumentation';
 import DocumentationTabs from '../components/DocumentationTabs';
 import { API_URL } from '../config/api';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 interface PackageDetailsPageProps {
   packages: Package[];
@@ -16,6 +17,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
   const location = useLocation();
   const navigate = useNavigate();
   const { isLoggedIn, addToCart, isInCart, login } = useTebex();
+  const { trackPackageView } = useAnalytics();
   const [isAdding, setIsAdding] = useState(false);
   const [currentProductImageIndex, setCurrentProductImageIndex] = useState(0);
 
@@ -75,6 +77,13 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
       }
     }
   }, [selectedPackage, packageVariants.length]);
+
+  // Track package view when user opens package details page
+  useEffect(() => {
+    if (selectedPackage?.name) {
+      trackPackageView(selectedPackage.name);
+    }
+  }, [selectedPackage?.name, trackPackageView]);
 
   const fromScripts = location.state?.fromScripts || false;
   const baseName = selectedPackage ? getBaseName(selectedPackage.name) : '';
@@ -384,11 +393,11 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                 <div className="h-px bg-zinc-800 my-6"></div>
 
                 <button
-                    onClick={() => {
+                    onClick={async () => {
                         if (!isLoggedIn) { login(); return; }
                         if (!inCart && selectedVersion.tebexPackageId) {
                             setIsAdding(true);
-                            addToCart({
+                            await addToCart({
                                 id: selectedVersion.tebexPackageId,
                                 name: selectedVersion.name,
                                 price: selectedVersion.price,
@@ -397,7 +406,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                                 qty: 1,
                                 category: selectedVersion.category,
                             });
-                            setTimeout(() => setIsAdding(false), 1000);
+                            setIsAdding(false);
                         }
                     }}
                     disabled={inCart || isAdding}

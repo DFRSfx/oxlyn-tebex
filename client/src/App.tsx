@@ -18,6 +18,7 @@ import { useTebex } from './context/TebexContext';
 import { tebexService } from './services/tebexService';
 import { mapTebexPackageToPackage } from './utils/packageMapper';
 import Loader from './components/Loader';
+import { useAnalytics } from './hooks/useAnalytics';
 import './styles/App.css';
 
 
@@ -153,6 +154,12 @@ function MainApp({
 }: MainAppProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { trackPageView } = useAnalytics();
+
+  // Track page views on route change
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname, trackPageView]);
 
   // Helper to create URL-friendly slug from package name
   const createSlug = (name: string) => {
