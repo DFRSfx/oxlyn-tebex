@@ -59,9 +59,10 @@ const Navigation: React.FC<NavigationProps> = ({
 
   const [hasAvailableTokens, setHasAvailableTokens] = useState(false);
   const [hasActiveDownloads, setHasActiveDownloads] = useState(false);
+  const [hasClaimedTokens, setHasClaimedTokens] = useState(false);
   const [showDownloadsModal, setShowDownloadsModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState<string>('');
+  const [checkoutIdent, setCheckoutIdent] = useState<string>('');
   
   // Refs
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,7 @@ const Navigation: React.FC<NavigationProps> = ({
         const data = await response.json();
         setHasAvailableTokens(data.hasAvailableTokens || false);
         setHasActiveDownloads(data.hasActiveDownloads || false);
+        setHasClaimedTokens(data.hasClaimedTokens || false);
       } catch (error) {
         console.error('Error checking tokens:', error);
       }
@@ -114,33 +116,26 @@ const Navigation: React.FC<NavigationProps> = ({
   useEffect(() => {
     const completePendingBasket = async (basketInfo: any) => {
       const TEBEX_API_BASE = 'https://headless.tebex.io/api';
-      const { basketIdent, packageId, token } = basketInfo;
+      const { basketIdent, packageId } = basketInfo;
 
       try {
-        const addPackageResponse = await fetch(`${TEBEX_API_BASE}/baskets/${basketIdent}/packages`, {
+        const TEBEX_TOKEN = 'rnzg-c64b4c58bc9563a37c956af67b1e357a2a414208';
+        const addPackageResponse = await fetch(`${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/packages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ package_id: packageId.toString(), quantity: 1 }),
+          body: JSON.stringify({ package_id: packageId, quantity: 1 }),
         });
 
-        if (!addPackageResponse.ok) return;
-
-        const checkoutResponse = await fetch(`${TEBEX_API_BASE}/accounts/${token}/baskets/${basketIdent}`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
-
-        if (!checkoutResponse.ok) return;
-
-        const checkoutData = await checkoutResponse.json();
-        const checkoutUrl = checkoutData.data?.links?.checkout;
-
-        if (checkoutUrl) {
-          flushSync(() => {
-            setCheckoutUrl(checkoutUrl);
-            setShowCheckoutModal(true);
-          });
+        if (!addPackageResponse.ok) {
+          console.error('❌ Failed to add package:', addPackageResponse.status, await addPackageResponse.text());
+          return;
         }
+
+        // Basket ident is the checkout ident for Tebex.js
+        flushSync(() => {
+          setCheckoutIdent(basketIdent);
+          setShowCheckoutModal(true);
+        });
       } catch (error) {
         console.error('❌ Error completing pending basket:', error);
       }
@@ -318,7 +313,7 @@ const Navigation: React.FC<NavigationProps> = ({
                         </div>
 
                         {/* My Downloads */}
-                        {(hasAvailableTokens || hasActiveDownloads) && (
+                        {(hasAvailableTokens || hasClaimedTokens) && (
                           <div
                             role="menuitem"
                             onClick={handleMyDownloads}
@@ -528,7 +523,7 @@ const Navigation: React.FC<NavigationProps> = ({
                           onClick={() => window.open('https://checkout.tebex.io/payment-history/login', '_blank')} 
                        />
 
-                       {(hasAvailableTokens || hasActiveDownloads) && (
+                       {(hasAvailableTokens || hasClaimedTokens) && (
                           <MobileNavLink
                              icon={<PackageIcon className="w-5 h-5 text-orange-500" />}
                              label="My Downloads"
@@ -590,7 +585,7 @@ const Navigation: React.FC<NavigationProps> = ({
 
       <CheckoutModal
         isOpen={showCheckoutModal}
-        checkoutUrl={checkoutUrl}
+        ident={checkoutIdent}
         onClose={() => setShowCheckoutModal(false)}
       />
     </>

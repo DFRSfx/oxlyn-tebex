@@ -37,19 +37,15 @@ export class EventQueue {
    */
   add(event: QueuedEvent): void {
     this.queue.push(event);
-    this.saveQueue();
-
-    console.log(`[Analytics Queue] Added event. Queue size: ${this.queue.length}/${BATCH_SIZE}`);
+    this.saveQueue();// (`[Analytics Queue] Added event. Queue size: ${this.queue.length}/${BATCH_SIZE}`);
 
     // Check if we should flush
-    if (this.queue.length >= BATCH_SIZE) {
-      console.log('[Analytics Queue] Batch size reached, flushing...');
+    if (this.queue.length >= BATCH_SIZE) {// ('[Analytics Queue] Batch size reached, flushing...');
       this.flush();
     }
 
     // Always flush critical events immediately
-    if (this.isCriticalEvent(event.eventType)) {
-      console.log(`[Analytics Queue] Critical event "${event.eventType}", flushing immediately...`);
+    if (this.isCriticalEvent(event.eventType)) {// (`[Analytics Queue] Critical event "${event.eventType}", flushing immediately...`);
       this.flush();
     }
   }
@@ -58,28 +54,21 @@ export class EventQueue {
    * Flush all events in queue
    */
   async flush(): Promise<void> {
-    if (this.queue.length === 0) {
-      console.log('[Analytics Queue] No events to flush');
+    if (this.queue.length === 0) {// ('[Analytics Queue] No events to flush');
       return;
     }
 
-    if (!this.isOnline) {
-      console.log('[Analytics Queue] Offline, queuing events for later');
+    if (!this.isOnline) {// ('[Analytics Queue] Offline, queuing events for later');
       return;
     }
 
     const eventsToSend = [...this.queue];
     this.queue = [];
-    this.saveQueue();
-
-    console.log(`[Analytics Queue] Flushing ${eventsToSend.length} events...`);
-    console.log('[Analytics Queue] 📤 Events being sent:', JSON.stringify(eventsToSend, null, 2));
+    this.saveQueue();// (`[Analytics Queue] Flushing ${eventsToSend.length} events...`);// ('[Analytics Queue] 📤 Events being sent:', JSON.stringify(eventsToSend, null, 2));
 
     try {
-      await this.sendCallback(eventsToSend);
-      console.log(`[Analytics Queue] ✅ Successfully sent ${eventsToSend.length} events`);
-    } catch (error) {
-      console.error('[Analytics Queue] ❌ Failed to send events:', error);
+      await this.sendCallback(eventsToSend);// (`[Analytics Queue] ✅ Successfully sent ${eventsToSend.length} events`);
+    } catch (error) {// ('[Analytics Queue] ❌ Failed to send events:', error);
       // Re-add failed events back to queue for retry
       this.queue = [...eventsToSend, ...this.queue];
       this.saveQueue();
@@ -108,11 +97,9 @@ export class EventQueue {
     try {
       const stored = localStorage.getItem(QUEUE_KEY);
       if (stored) {
-        this.queue = JSON.parse(stored);
-        console.log(`[Analytics] Loaded ${this.queue.length} events from storage`);
+        this.queue = JSON.parse(stored);// (`[Analytics] Loaded ${this.queue.length} events from storage`);
       }
-    } catch (error) {
-      console.error('[Analytics] Failed to load queue:', error);
+    } catch (error) {// ('[Analytics] Failed to load queue:', error);
       this.queue = [];
     }
   }
@@ -123,8 +110,7 @@ export class EventQueue {
   private saveQueue(): void {
     try {
       localStorage.setItem(QUEUE_KEY, JSON.stringify(this.queue));
-    } catch (error) {
-      console.error('[Analytics] Failed to save queue:', error);
+    } catch (error) {// ('[Analytics] Failed to save queue:', error);
     }
   }
 
@@ -141,14 +127,12 @@ export class EventQueue {
    * Setup online/offline listener
    */
   private setupOnlineListener(): void {
-    window.addEventListener('online', () => {
-      console.log('[Analytics] Online - flushing queue');
+    window.addEventListener('online', () => {// ('[Analytics] Online - flushing queue');
       this.isOnline = true;
       this.flush();
     });
 
-    window.addEventListener('offline', () => {
-      console.log('[Analytics] Offline - queuing events');
+    window.addEventListener('offline', () => {// ('[Analytics] Offline - queuing events');
       this.isOnline = false;
     });
 

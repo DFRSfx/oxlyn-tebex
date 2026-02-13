@@ -19,13 +19,49 @@ import { tebexService } from './services/tebexService';
 import { mapTebexPackageToPackage } from './utils/packageMapper';
 import Loader from './components/Loader';
 import { useAnalytics } from './hooks/useAnalytics';
+import { launchTebexCheckout } from './utils/tebexCheckout';
 import './styles/App.css';
 
 
 
+const TEBEX_API_BASE = 'https://headless.tebex.io/api';
+
+async function completeTebexBasket(basketIdent: string, packageId: number) {
+  try {
+    // Add package to basket (user is now authenticated via Tebex auth flow)
+    const addResponse = await fetch(`${TEBEX_API_BASE}/baskets/${basketIdent}/packages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ package_id: packageId, quantity: 1 }),
+    });
+
+    if (!addResponse.ok) {
+      console.error('Failed to add package after auth:', addResponse.status, await addResponse.text());
+      return;
+    }
+
+    // Open the Tebex checkout modal in-page using the basket ident
+    launchTebexCheckout(basketIdent);
+  } catch (error) {
+    console.error('Failed to complete Tebex basket:', error);
+  }
+}
+
 function App() {
   const { isLoading: isTebexLoading, loadingMessage, isCheckoutOpen, checkoutUrl, closeCheckout, enrichCartWithPackageData } = useTebex();
   const { user, isAuthenticated, isDiscordLinked, loading: authLoading } = useAuth();
+
+  // Handle Tebex basket auth callback (redirected back after game account login)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tebexIdent = params.get('tebex_ident');
+    const tebexPkg = params.get('tebex_pkg');
+
+    if (tebexIdent && tebexPkg) {
+      window.history.replaceState({}, '', window.location.pathname);
+      completeTebexBasket(tebexIdent, parseInt(tebexPkg, 10));
+    }
+  }, []);
 
   // Check if we're on the checkout-cancelled page
   if (window.location.pathname === '/checkout-cancelled') {

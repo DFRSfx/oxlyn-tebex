@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { Download, Package, X, Gift } from 'lucide-react';
 import ClaimTokenModal from './ClaimTokenModal';
 import DownloadConfirmModal from './DownloadConfirmModal';
-import CheckoutModal from './CheckoutModal';
 import Loader from './Loader';
 import { API_URL } from '../config/api';
 
@@ -37,8 +36,6 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
   const [downloadingToken, setDownloadingToken] = useState<string | null>(null);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState('');
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState<string>('');
 
   useEffect(() => {
     if (isOpen && user?.discordId) {
@@ -87,57 +84,36 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
       setIsProcessingCheckout(true);
       setCheckoutMessage('Fetching packages...');
 
-      // First, fetch all packages to find the correct package ID
-      console.log('📦 Fetching packages from webstore...');
+      // Fetch all packages to find the correct package ID
       const packagesResponse = await fetch(`${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/packages`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (!packagesResponse.ok) {
-        console.error('❌ Failed to fetch packages');
         setIsProcessingCheckout(false);
         return;
       }
 
       const packagesData = await packagesResponse.json();
-      console.log('📋 Available packages:', packagesData.data);
-
-      // Find package with "OXLYN PACK" in the name
-      setCheckoutMessage('Finding OXLYN PACK...');
       const oxlynPackage = packagesData.data?.find((pkg: any) =>
         pkg.name?.toUpperCase().includes('OXLYN PACK')
       );
 
       if (!oxlynPackage) {
         console.error('❌ Could not find OXLYN PACK package');
-        console.log('📋 Available package names:');
-        packagesData.data?.forEach((pkg: any) => {
-          console.log(`  - ${pkg.name}`);
-        });
         setIsProcessingCheckout(false);
         return;
       }
 
-      const packageId = oxlynPackage.id;
-      console.log(`📦 Found OXLYN PACK: "${oxlynPackage.name}" (ID: ${packageId})`);
-
-      // Step 1: Create a new basket
+      // Create a basket
       setCheckoutMessage('Creating basket...');
       const basketResponse = await fetch(`${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          complete_auto_redirect: true,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ complete_auto_redirect: true }),
       });
 
       if (!basketResponse.ok) {
-        console.error('❌ Failed to create basket');
         setIsProcessingCheckout(false);
         return;
       }
@@ -146,51 +122,40 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
       const basketIdent = basketData.data?.ident;
 
       if (!basketIdent) {
-        console.error('❌ No basket identifier received');
         setIsProcessingCheckout(false);
         return;
       }
 
-      console.log('✅ Basket created:', basketIdent);
-
-      // Step 2: Authenticate basket with FiveM
-      setCheckoutMessage('Getting authentication...');
-      console.log('🔐 Getting FiveM authentication URL...');
-      const returnUrl = encodeURIComponent(window.location.href);
-      const authUrlResponse = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/auth?returnUrl=${returnUrl}`
+      // Tebex requires game account auth before packages can be added.
+      // Get the auth URL and redirect the current window through it.
+      // After auth, Tebex redirects back with basket ident + package ID in the URL
+      // and App.tsx opens the Tebex checkout modal.
+      setCheckoutMessage('Preparing authentication...');
+      const returnUrl = `${window.location.origin}/?tebex_ident=${encodeURIComponent(basketIdent)}&tebex_pkg=${oxlynPackage.id}`;
+      const authResponse = await fetch(
+        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/auth?returnUrl=${encodeURIComponent(returnUrl)}`,
+        { headers: { 'Content-Type': 'application/json' } }
       );
 
-      if (!authUrlResponse.ok) {
-        console.error('❌ Failed to get FiveM auth URL');
-        setIsProcessingCheckout(false);
+      setIsProcessingCheckout(false);
+
+      if (!authResponse.ok) {
+        console.error('❌ Failed to get auth URL:', authResponse.status);
         return;
       }
 
-      const authData = await authUrlResponse.json();
-      const fiveMAuthUrl = authData[0]?.url;
+      const authData = await authResponse.json();
+      // Auth response is an array of login methods (Steam, FiveM, etc.)
+      const authUrl = Array.isArray(authData) ? authData[0]?.url : authData?.url;
 
-      if (!fiveMAuthUrl) {
-        console.error('❌ No FiveM auth URL received');
-        setIsProcessingCheckout(false);
+      if (!authUrl) {
+        console.error('❌ No auth URL in response:', authData);
         return;
       }
 
-      console.log('🔐 FiveM auth required, redirecting...');
-      setCheckoutMessage('Redirecting to FiveM authentication...');
-
-      // Store basket info and package ID in localStorage to continue after auth
-      localStorage.setItem('tebex_pending_basket', JSON.stringify({
-        basketIdent,
-        packageId,
-        token: TEBEX_TOKEN
-      }));
-
-      // Redirect to FiveM authentication
-      setTimeout(() => {
-        window.location.href = fiveMAuthUrl;
-      }, 500);
-      return;
+      // Navigate the current window to Tebex auth; after login Tebex redirects back
+      // to our site where App.tsx opens the checkout modal via launchTebexCheckout.
+      window.location.href = authUrl;
 
     } catch (error) {
       console.error('❌ Error during Tebex checkout:', error);
@@ -222,18 +187,20 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
   };
 
   const handleClaimScripts = async (token: string) => {
-    // Mark scripts as claimed in DB, then start Tebex checkout
+    // Mark scripts as claimed in DB
     try {
       await fetch(`${API_URL}/downloads/mark-scripts-claimed/${token}`, {
         method: 'POST',
         credentials: 'include',
       });
-      // Refresh so the button disappears
       fetchDownloads();
     } catch (error) {
       console.error('Error marking scripts as claimed:', error);
     }
-    downloadPackageScripts();
+
+    // Build basket, get Tebex auth URL, and redirect current window through auth.
+    // After auth, App.tsx detects the callback params and opens the checkout modal.
+    await downloadPackageScripts();
   };
 
   const handleCancelDownload = async (token: string) => {
@@ -462,12 +429,6 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
         onClaimScripts={() => {}}
       />
 
-      {/* Checkout Modal */}
-      <CheckoutModal
-        isOpen={showCheckoutModal}
-        checkoutUrl={checkoutUrl}
-        onClose={() => setShowCheckoutModal(false)}
-      />
     </>
   );
 }

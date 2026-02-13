@@ -50,6 +50,18 @@ export class DownloadTokenModel {
     return (rows as any)[0] || null;
   }
 
+  // Verificar se o utilizador já tem algum token claimed
+  static async hasAnyClaimedTokenForUser(discordUserId: string): Promise<boolean> {
+    const query = `
+      SELECT 1 FROM download_tokens
+      WHERE discord_user_id = ?
+        AND is_claimed = TRUE
+      LIMIT 1
+    `;
+    const [rows] = await pool.query(query, [discordUserId]);
+    return (rows as any[]).length > 0;
+  }
+
   // Verificar se o utilizador tem downloads ativos (com usos restantes ou scripts por reclamar)
   static async hasActiveDownloadsForUser(discordUserId: string): Promise<boolean> {
     const query = `

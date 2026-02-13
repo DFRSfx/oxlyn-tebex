@@ -11,20 +11,15 @@ export function useAnalytics() {
     // Initialize analytics if not already initialized
     if (!analyticsRef.current) {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-      console.log('[useAnalytics] Initializing analytics SDK...', {
-        apiUrl,
-        debug: import.meta.env.DEV,
-      });
+      // console.log('[useAnalytics] Initializing analytics SDK...', { apiUrl, debug: import.meta.env.DEV });
 
       analyticsRef.current = initAnalytics({
         apiUrl,
         debug: import.meta.env.DEV,
       });
-
-      console.log('[useAnalytics] Analytics SDK initialized:', analyticsRef.current);
+      // console.log('[useAnalytics] Analytics SDK initialized:', analyticsRef.current);
     } else {
-      console.log('[useAnalytics] Using existing analytics instance');
+      // console.log('[useAnalytics] Using existing analytics instance');
     }
 
     // Setup heartbeat every 5 minutes

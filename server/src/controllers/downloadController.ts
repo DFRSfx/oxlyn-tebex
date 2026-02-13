@@ -78,13 +78,15 @@ export class DownloadController {
         return res.status(401).json({ error: 'Discord authentication required' });
       }
 
-      const [tokens, hasActive] = await Promise.all([
+      const [tokens, hasActive, hasClaimed] = await Promise.all([
         DownloadTokenModel.findAvailableForUser(user.discordId),
         DownloadTokenModel.hasActiveDownloadsForUser(user.discordId),
+        DownloadTokenModel.hasAnyClaimedTokenForUser(user.discordId),
       ]);
       res.json({
         hasAvailableTokens: tokens.length > 0,
         hasActiveDownloads: hasActive,
+        hasClaimedTokens: hasClaimed,
         count: tokens.length,
       });
     } catch (error) {

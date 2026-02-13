@@ -12,6 +12,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
+    include: ['@tebexio/tebex.js'],
   },
   server: {
     hmr: {
