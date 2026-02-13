@@ -8,9 +8,10 @@ import { tebexService } from '../services/tebexService';
 import { mapTebexPackageToPackage } from '../utils/packageMapper';
 import { Package } from '../types';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { launchTebexCheckout } from '../utils/tebexCheckout';
 
 const CartPage: React.FC = () => {
-  const { cartItems, removeFromCart, proceedToCheckout, isLoggedIn, applyCoupon, removeCoupon, appliedCoupon } = useTebex();
+  const { cartItems, removeFromCart, basketIdent, isLoggedIn, applyCoupon, removeCoupon, appliedCoupon } = useTebex();
   const { isAuthenticated: isDiscordConnected } = useAuth();
   const { trackEvent } = useAnalytics();
   const navigate = useNavigate();
@@ -164,6 +165,22 @@ const CartPage: React.FC = () => {
         coupon_code: appliedCoupon?.code,
       },
     });
+  };
+
+  const handleCheckout = () => {
+    if (!basketIdent) return;
+
+    // Track checkout start (sync, no awaits)
+    cartItems.forEach(item => {
+      trackEvent('checkout_start', {
+        packageName: item.name,
+        eventData: { price: item.price, quantity: item.qty, total: item.price * item.qty },
+      });
+    });
+
+    // Launch Tebex checkout modal — called synchronously inside user gesture
+    // so the popup is never blocked by the browser
+    launchTebexCheckout(basketIdent);
   };
 
   const handleRemoveItem = async (item: any) => {
@@ -383,8 +400,8 @@ const CartPage: React.FC = () => {
                     )}
 
                     <button
-                        onClick={proceedToCheckout}
-                        disabled={!isDiscordConnected}
+                        onClick={handleCheckout}
+                        disabled={!isDiscordConnected || !basketIdent}
                         className="w-full py-3.5 bg-white text-black font-bold rounded hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2 mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                          {!isDiscordConnected ? (
