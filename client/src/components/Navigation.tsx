@@ -8,7 +8,10 @@ import {
   Menu,
   X,
   ChevronDown,
-  History
+  History,
+  BookOpen,
+  MessageCircle,
+  ChevronRight
 } from 'lucide-react';
 import { PageType, Package } from '../types';
 import { useTebex } from '../context/TebexContext';
@@ -49,7 +52,11 @@ const Navigation: React.FC<NavigationProps> = ({
   
   // State
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
+  
+  // Mobile Menu Animation States
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Controls mounting
+  const [isVisible, setIsVisible] = useState(false); // Controls transition/opacity
+
   const [hasAvailableTokens, setHasAvailableTokens] = useState(false);
   const [showDownloadsModal, setShowDownloadsModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
@@ -58,9 +65,24 @@ const Navigation: React.FC<NavigationProps> = ({
   // Refs
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // --- Animation Handlers ---
+  const handleOpenMobileMenu = () => {
+    setIsMobileMenuOpen(true);
+    // Tiny delay to ensure DOM is mounted before adding the opacity/translate classes
+    setTimeout(() => setIsVisible(true), 10);
+  };
+
+  const handleCloseMobileMenu = () => {
+    setIsVisible(false); // Start slide-out/fade-out
+    // Wait for animation duration (300ms) before unmounting
+    setTimeout(() => {
+      setIsMobileMenuOpen(false);
+    }, 300);
+  };
+
   // Close mobile menu on route change
   useEffect(() => {
-    setIsMobileMenuOpen(false);
+    if (isMobileMenuOpen) handleCloseMobileMenu();
   }, [location.pathname]);
 
   // Optimized Token Check
@@ -145,14 +167,9 @@ const Navigation: React.FC<NavigationProps> = ({
 
   const handleDiscordLogin = async () => {
     try {
-      // Track Discord login click
       trackEvent('discord_login_clicked', {
-        eventData: {
-          is_authenticated: isDiscordAuth,
-          cfx_logged_in: isLoggedIn,
-        },
+        eventData: { is_authenticated: isDiscordAuth, cfx_logged_in: isLoggedIn },
       });
-
       const authUrl = await getDiscordAuthUrl();
       window.location.href = authUrl;
     } catch (error) {
@@ -161,63 +178,35 @@ const Navigation: React.FC<NavigationProps> = ({
   };
 
   const handleDiscordLogout = () => {
-    // Track Discord logout
-    trackEvent('discord_logout_clicked', {
-      eventData: {
-        discord_username: discordUser?.discordUsername,
-      },
-    });
-
+    trackEvent('discord_logout_clicked', { eventData: { discord_username: discordUser?.discordUsername } });
     discordLogout();
   };
 
   const handleCFXLogin = () => {
-    // Track CFX login click
     trackEvent('cfx_login_clicked');
     login();
   };
 
   const handleLogout = () => {
-    // Track logout
-    trackEvent('logout_clicked', {
-      eventData: {
-        username: cfxUserData?.username,
-        had_discord: isDiscordAuth,
-      },
-    });
-
+    trackEvent('logout_clicked', { eventData: { username: cfxUserData?.username, had_discord: isDiscordAuth } });
     setIsDropdownOpen(false);
     logout();
   };
 
   const handleMyDownloads = () => {
-    // Track downloads modal open
     trackEvent('my_downloads_clicked');
-
     setIsDropdownOpen(false);
     setShowDownloadsModal(true);
   };
 
   const handleAdminAccess = () => {
-    // Track admin panel access
-    trackEvent('admin_access_clicked', {
-      eventData: {
-        discord_username: discordUser?.discordUsername,
-      },
-    });
-
+    trackEvent('admin_access_clicked', { eventData: { discord_username: discordUser?.discordUsername } });
     setIsDropdownOpen(false);
     navigate('/admin');
   };
 
   const handleCartClick = () => {
-    // Track cart icon click
-    trackEvent('cart_icon_clicked', {
-      eventData: {
-        cart_items: cartItems.length,
-      },
-    });
-
+    trackEvent('cart_icon_clicked', { eventData: { cart_items: cartItems.length } });
     navigate('/cart');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -227,7 +216,7 @@ const Navigation: React.FC<NavigationProps> = ({
       <nav className={`fixed top-0 w-full z-50 transition-all duration-700 ${scrollY > 80 ? 'nav-blur' : 'bg-transparent'}`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            {/* Logo Section (Maintained from original code) */}
+            {/* Logo Section (Maintained from original) */}
             <button
               onClick={() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -248,7 +237,7 @@ const Navigation: React.FC<NavigationProps> = ({
               </div>
             </button>
 
-            {/* Desktop Navigation Links (Maintained from original code) */}
+            {/* Desktop Navigation Links (Maintained from original) */}
             <div className={`hidden lg:flex items-center space-x-6 text-sm font-medium transition-all duration-1200 ${isLoaded ? 'apple-fade-in' : 'opacity-0 translate-y-4'}`} style={{ transitionDelay: '200ms' }}>
               <button onClick={navigateToScripts} className="nav-link">Scripts</button>
 
@@ -272,7 +261,7 @@ const Navigation: React.FC<NavigationProps> = ({
               </button>
             </div>
 
-            {/* Desktop Auth & Cart (UPDATED to New Design) */}
+            {/* Desktop Auth & Cart (Maintained from original) */}
             <div className={`hidden lg:flex items-center gap-2 transition-all duration-1400 ${isLoaded ? 'apple-fade-in' : 'opacity-0 translate-y-4'}`} style={{ transitionDelay: '400ms' }}>
               
               {isLoggedIn ? (
@@ -313,20 +302,20 @@ const Navigation: React.FC<NavigationProps> = ({
                            onClick={!isDiscordAuth ? handleDiscordLogin : handleDiscordLogout}
                            className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                         >
-                            {!isDiscordAuth ? (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-discord mr-2" viewBox="0 0 16 16"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"></path></svg>
-                                    Connect Discord
-                                </>
-                            ) : (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-discord mr-2 text-[#5865F2]" viewBox="0 0 16 16"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"></path></svg>
-                                    Disconnect {discordUser?.discordUsername ? `.${discordUser.discordUsername}` : ''}
-                                </>
-                            )}
+                           {!isDiscordAuth ? (
+                               <>
+                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-discord mr-2" viewBox="0 0 16 16"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"></path></svg>
+                                   Connect Discord
+                               </>
+                           ) : (
+                               <>
+                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-discord mr-2 text-[#5865F2]" viewBox="0 0 16 16"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"></path></svg>
+                                   Disconnect {discordUser?.discordUsername ? `.${discordUser.discordUsername}` : ''}
+                               </>
+                           )}
                         </div>
 
-                        {/* My Downloads - Only show if has tokens */}
+                        {/* My Downloads */}
                         {hasAvailableTokens && (
                           <div
                             role="menuitem"
@@ -339,7 +328,7 @@ const Navigation: React.FC<NavigationProps> = ({
                           </div>
                         )}
 
-                        {/* Order History - Always show */}
+                        {/* Order History */}
                         <div
                           role="menuitem"
                           onClick={() => {
@@ -352,7 +341,7 @@ const Navigation: React.FC<NavigationProps> = ({
                           Order History
                         </div>
 
-                        {/* Admin Panel - Only show for admin users */}
+                        {/* Admin Panel */}
                         {discordUser?.role === 'admin' && (
                           <>
                             <div role="separator" className="-mx-1 my-1 h-px bg-zinc-800"></div>
@@ -430,70 +419,156 @@ const Navigation: React.FC<NavigationProps> = ({
               )}
 
               <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                onClick={handleOpenMobileMenu}
                 className="p-2 text-gray-300 hover:text-white transition-colors"
                 aria-label="Toggle Menu"
               >
-                {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                <Menu className="w-6 h-6" />
               </button>
             </div>
           </div>
         </div>
+      </nav>
 
-        {/* Mobile Menu Dropdown */}
-        <div 
-          className={`lg:hidden fixed inset-x-0 top-[72px] bg-black/98 border-b border-white/10 transition-all duration-300 ease-in-out overflow-hidden ${
-            isMobileMenuOpen ? 'max-h-screen opacity-100 py-6' : 'max-h-0 opacity-0 py-0'
-          }`}
-        >
-          <div className="px-6 space-y-4">
-             {/* Mobile Links */}
-             <div className="flex flex-col space-y-3">
-              <button onClick={navigateToScripts} className="text-lg font-medium text-white hover:text-red-400 text-left">Scripts</button>
-              <button onClick={() => window.open('https://docs.oxlynsoftware.com', '_blank')} className="text-lg font-medium text-white hover:text-red-400 text-left">
-                Documentation
-              </button>
-              <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); navigate('/terms'); }} className="text-lg font-medium text-white hover:text-red-400 text-left">
-                Terms
-              </button>
-              <button onClick={handleDiscordRedirect} className="text-lg font-medium text-white hover:text-red-400 text-left">
-                Support
-              </button>
-             </div>
+      {/* ---------------------------------------------------------
+        NEW MOBILE MENU (SLIDE FROM RIGHT)
+        ---------------------------------------------------------
+      */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-[60]">
+          {/* Backdrop with Fade Transition */}
+          <div
+            className={`absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+            onClick={handleCloseMobileMenu}
+          />
 
-             <div className="border-t border-white/10 pt-4">
-              {isLoggedIn ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <UserAvatar className="w-10 h-10 border" />
-                    <div>
-                      <p className="font-medium text-white">{username}</p>
-                      <p className="text-xs text-gray-400">ID: {userId}</p>
+          {/* Sidebar with Slide Transition (Right to Left) */}
+          <div
+            className={`absolute right-0 top-0 h-full w-[85%] max-w-[360px] bg-[#09090b] border-l border-white/10 shadow-2xl flex flex-col transform transition-transform duration-300 ease-out ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
+          >
+            {/* Sidebar Header */}
+            <div className="p-6 flex items-center justify-between border-b border-white/5 bg-[#0f0f11]">
+              <div className="flex items-center gap-3">
+                 {isLoggedIn ? (
+                    <div className="flex items-center gap-3">
+                       <div className="w-10 h-10 rounded-full bg-zinc-800 border border-white/10 overflow-hidden">
+                          <UserAvatar className="w-full h-full object-cover" />
+                       </div>
+                       <div className="flex flex-col">
+                          <span className="text-white font-bold text-sm">{username}</span>
+                          <span className="text-xs text-zinc-500">ID: {userId}</span>
+                       </div>
                     </div>
-                  </div>
-                  
-                  {!isDiscordAuth ? (
-                    <button onClick={handleDiscordLogin} className="w-full flex items-center justify-center gap-2 py-2 border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 rounded-lg">
-                      Sign in with Discord
+                 ) : (
+                    <img src="https://i.imgur.com/ndYSTED.png" alt="Logo" className="h-8 w-auto opacity-80" />
+                 )}
+              </div>
+              <button onClick={handleCloseMobileMenu} className="p-2 bg-white/5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-all">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-8">
+              
+              {/* Navigation Group */}
+              <div>
+                 <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3 px-2">Navigation</h3>
+                 <div className="space-y-1">
+                    <MobileNavLink 
+                       icon={<PackageIcon className="w-5 h-5" />} 
+                       label="Scripts" 
+                       onClick={() => { handleCloseMobileMenu(); navigateToScripts(); }} 
+                    />
+                    <MobileNavLink 
+                       icon={<BookOpen className="w-5 h-5" />} 
+                       label="Documentation" 
+                       onClick={() => { handleCloseMobileMenu(); window.open('https://docs.oxlynsoftware.com', '_blank'); }} 
+                    />
+                     <MobileNavLink 
+                       icon={<span className="text-xs font-bold border border-current px-1 rounded">TERMS</span>} 
+                       label="Terms of Service" 
+                       onClick={() => { handleCloseMobileMenu(); navigate('/terms'); }} 
+                    />
+                    <MobileNavLink 
+                       icon={<MessageCircle className="w-5 h-5" />} 
+                       label="Support" 
+                       onClick={() => { handleCloseMobileMenu(); handleDiscordRedirect(); }} 
+                    />
+                 </div>
+              </div>
+
+              {/* Account / Auth Group */}
+              <div>
+                 <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3 px-2">
+                    {isLoggedIn ? 'Account' : 'Get Started'}
+                 </h3>
+                 
+                 {isLoggedIn ? (
+                    <div className="space-y-1">
+                       {!isDiscordAuth ? (
+                          <MobileNavLink 
+                             icon={<svg className="w-5 h-5" viewBox="0 0 16 16" fill="currentColor"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"/></svg>} 
+                             label="Connect Discord" 
+                             onClick={handleDiscordLogin} 
+                          />
+                       ) : (
+                          <MobileNavLink 
+                             icon={<svg className="w-5 h-5 text-[#5865F2]" viewBox="0 0 16 16" fill="currentColor"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"/></svg>} 
+                             label={`Disconnect ${discordUser?.discordUsername || ''}`}
+                             onClick={handleDiscordLogout} 
+                          />
+                       )}
+                       
+                       <MobileNavLink 
+                          icon={<History className="w-5 h-5" />} 
+                          label="Order History" 
+                          onClick={() => window.open('https://checkout.tebex.io/payment-history/login', '_blank')} 
+                       />
+
+                       {hasAvailableTokens && (
+                          <MobileNavLink 
+                             icon={<PackageIcon className="w-5 h-5 text-orange-500" />} 
+                             label="My Downloads" 
+                             onClick={() => { handleCloseMobileMenu(); setShowDownloadsModal(true); }} 
+                          />
+                       )}
+
+                       {discordUser?.role === 'admin' && (
+                          <MobileNavLink 
+                             icon={<Settings className="w-5 h-5 text-amber-500" />} 
+                             label="Admin Panel" 
+                             onClick={() => { handleCloseMobileMenu(); navigate('/admin'); }} 
+                             className="border-amber-500/20 bg-amber-500/5"
+                          />
+                       )}
+
+                       <div className="pt-4">
+                          <button onClick={() => { handleCloseMobileMenu(); handleLogout(); }} className="w-full flex items-center justify-center gap-2 py-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl font-medium hover:bg-red-500/20 transition-all">
+                             <LogOut className="w-4 h-4" /> Log Out
+                          </button>
+                       </div>
+                    </div>
+                 ) : (
+                    <button 
+                       onClick={() => { handleCloseMobileMenu(); handleCFXLogin(); }} 
+                       className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-900/20 hover:scale-[1.02] transition-transform"
+                    >
+                       <svg className="w-5 h-5" viewBox="0 0 48 48" fill="currentColor"><path d="M5,45 9,34 21,22 15,45 M25,18 33,45 43,45 32,12 M16.059,14.164 20,3 28,3 M10.731,29.002 23,17 23,15 11.58,26.667 M15.142,16.429 13,22 29.724,5.725 28.818,3.178 M23.932,14.055 24.377,15.626 30.941,9.178 30.385,7.702" /></svg>
+                       Sign in with FiveM
                     </button>
-                  ) : (
-                    <button onClick={() => setShowDownloadsModal(true)} className="w-full flex items-center justify-between px-4 py-3 bg-white/5 rounded-lg text-white">
-                      <span>My Downloads</span>
-                      {hasAvailableTokens && <span className="bg-red-500 w-2 h-2 rounded-full"></span>}
-                    </button>
-                  )}
-                  
-                  <button onClick={logout} className="w-full text-left text-red-400 py-2">Log out</button>
-                </div>
-              ) : (
-                <button onClick={login} className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-orange-600 to-amber-600 rounded-lg text-white font-bold">
-                  Sign in with FiveM
-                </button>
-              )}
-             </div>
+                 )}
+              </div>
+            </div>
+            
+            {/* Sidebar Footer */}
+            <div className="p-4 border-t border-white/5 bg-[#0f0f11] text-center">
+              <p className="text-xs text-zinc-600">© 2026 OXLYN Software. All rights reserved.</p>
+            </div>
+
           </div>
         </div>
-      </nav>
+      )}
 
       <MyDownloadsModal
         isOpen={showDownloadsModal}
@@ -516,5 +591,19 @@ const Navigation: React.FC<NavigationProps> = ({
     </>
   );
 };
+
+// Reusable Mobile Nav Link Component to ensure consistency
+const MobileNavLink = ({ icon, label, onClick, className = "" }: { icon: React.ReactNode, label: string, onClick: () => void, className?: string }) => (
+   <button 
+      onClick={onClick}
+      className={`w-full flex items-center justify-between p-4 bg-[#121214] border border-white/5 rounded-xl hover:bg-[#1a1a1c] hover:border-white/10 transition-all group ${className}`}
+   >
+      <div className="flex items-center gap-4">
+         <div className="text-zinc-400 group-hover:text-white transition-colors">{icon}</div>
+         <span className="font-medium text-zinc-300 group-hover:text-white transition-colors">{label}</span>
+      </div>
+      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400" />
+   </button>
+);
 
 export default Navigation;
