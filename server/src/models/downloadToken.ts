@@ -13,6 +13,7 @@ export interface DownloadToken {
   created_at: Date;
   claimed_at?: Date;
   last_download_at?: Date;
+  scripts_claimed: boolean;
 }
 
 export class DownloadTokenModel {
@@ -47,6 +48,22 @@ export class DownloadTokenModel {
     const query = 'SELECT * FROM download_tokens WHERE token = ?';
     const [rows] = await pool.query(query, [token]);
     return (rows as any)[0] || null;
+  }
+
+  // Verificar se o utilizador tem downloads ativos (com usos restantes ou scripts por reclamar)
+  static async hasActiveDownloadsForUser(discordUserId: string): Promise<boolean> {
+    const query = `
+      SELECT 1 FROM download_tokens
+      WHERE discord_user_id = ?
+        AND is_claimed = TRUE
+        AND (
+          remaining_downloads > 0
+          OR (last_download_at IS NOT NULL AND scripts_claimed = FALSE)
+        )
+      LIMIT 1
+    `;
+    const [rows] = await pool.query(query, [discordUserId]);
+    return (rows as any[]).length > 0;
   }
 
   // Buscar tokens disponíveis para claim (usuário específico)
@@ -136,6 +153,24 @@ export class DownloadTokenModel {
         AND remaining_downloads < max_downloads
         AND last_download_at IS NOT NULL
         AND last_download_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+    `;
+    const [result] = await pool.query(query, [token, discordUserId]);
+    return ((result as any).affectedRows ?? 0) > 0;
+  }
+
+  // Marcar scripts como claimed (Tebex checkout completo)
+  static async markScriptsClaimed(token: string, discordUserId: string): Promise<boolean> {
+    const downloadToken = await this.findByToken(token);
+
+    if (!downloadToken) return false;
+    if (downloadToken.discord_user_id !== discordUserId) return false;
+    if (!downloadToken.is_claimed) return false;
+    if (downloadToken.scripts_claimed) return true; // Already claimed, idempotent
+
+    const query = `
+      UPDATE download_tokens
+      SET scripts_claimed = TRUE
+      WHERE token = ? AND discord_user_id = ? AND is_claimed = TRUE
     `;
     const [result] = await pool.query(query, [token, discordUserId]);
     return ((result as any).affectedRows ?? 0) > 0;

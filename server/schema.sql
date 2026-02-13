@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS `download_tokens` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `claimed_at` timestamp NULL DEFAULT NULL,
   `last_download_at` timestamp NULL DEFAULT NULL,
+  `scripts_claimed` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `token` (`token`),
   KEY `idx_token` (`token`),

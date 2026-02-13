@@ -58,6 +58,7 @@ const Navigation: React.FC<NavigationProps> = ({
   const [isVisible, setIsVisible] = useState(false); // Controls transition/opacity
 
   const [hasAvailableTokens, setHasAvailableTokens] = useState(false);
+  const [hasActiveDownloads, setHasActiveDownloads] = useState(false);
   const [showDownloadsModal, setShowDownloadsModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string>('');
@@ -96,6 +97,7 @@ const Navigation: React.FC<NavigationProps> = ({
         });
         const data = await response.json();
         setHasAvailableTokens(data.hasAvailableTokens || false);
+        setHasActiveDownloads(data.hasActiveDownloads || false);
       } catch (error) {
         console.error('Error checking tokens:', error);
       }
@@ -316,7 +318,7 @@ const Navigation: React.FC<NavigationProps> = ({
                         </div>
 
                         {/* My Downloads */}
-                        {hasAvailableTokens && (
+                        {(hasAvailableTokens || hasActiveDownloads) && (
                           <div
                             role="menuitem"
                             onClick={handleMyDownloads}
@@ -526,11 +528,11 @@ const Navigation: React.FC<NavigationProps> = ({
                           onClick={() => window.open('https://checkout.tebex.io/payment-history/login', '_blank')} 
                        />
 
-                       {hasAvailableTokens && (
-                          <MobileNavLink 
-                             icon={<PackageIcon className="w-5 h-5 text-orange-500" />} 
-                             label="My Downloads" 
-                             onClick={() => { handleCloseMobileMenu(); setShowDownloadsModal(true); }} 
+                       {(hasAvailableTokens || hasActiveDownloads) && (
+                          <MobileNavLink
+                             icon={<PackageIcon className="w-5 h-5 text-orange-500" />}
+                             label="My Downloads"
+                             onClick={() => { handleCloseMobileMenu(); setShowDownloadsModal(true); }}
                           />
                        )}
 
@@ -577,7 +579,10 @@ const Navigation: React.FC<NavigationProps> = ({
           if (discordUser?.discordId) {
             fetch(`${API_URL}/downloads/available`, { credentials: 'include' })
               .then(res => res.json())
-              .then(data => setHasAvailableTokens(data.hasAvailableTokens || false))
+              .then(data => {
+              setHasAvailableTokens(data.hasAvailableTokens || false);
+              setHasActiveDownloads(data.hasActiveDownloads || false);
+            })
               .catch(console.error);
           }
         }}

@@ -15,6 +15,7 @@ interface DownloadItem {
   max_downloads: number;
   claimed_at: string;
   last_download_at?: string;
+  scripts_claimed: boolean;
 }
 
 interface MyDownloadsModalProps {
@@ -198,45 +199,41 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
   };
 
   const handleConfirmDownload = () => {
-    console.log('🟢 Confirm download called, confirmDownload:', confirmDownload);
+    if (!confirmDownload) return;
 
-    if (!confirmDownload) {
-      console.log('🔴 No confirmDownload data, returning');
-      return;
-    }
-
-    console.log('🟡 Setting downloading token:', confirmDownload.token);
     setDownloadingToken(confirmDownload.token);
 
-    // Create a temporary anchor element to trigger download
+    // Trigger only the specific file download
     const downloadUrl = `${API_URL}/downloads/file/${confirmDownload.token}`;
-    console.log('🟣 Creating download link:', downloadUrl);
-
     const link = document.createElement('a');
     link.href = downloadUrl;
     link.download = confirmDownload.fileName;
     link.style.display = 'none';
     document.body.appendChild(link);
-
-    console.log('🔵 Clicking download link');
     link.click();
-
-    console.log('🟢 Removing link from DOM');
     document.body.removeChild(link);
 
-    // Download package scripts after main file download
-    setTimeout(() => {
-      downloadPackageScripts();
-    }, 500);
-
-    console.log('🟡 Closing confirmation modal');
     setConfirmDownload(null);
 
     setTimeout(() => {
-      console.log('⏰ Clearing downloading state and refreshing');
       setDownloadingToken(null);
       fetchDownloads();
     }, 3000);
+  };
+
+  const handleClaimScripts = async (token: string) => {
+    // Mark scripts as claimed in DB, then start Tebex checkout
+    try {
+      await fetch(`${API_URL}/downloads/mark-scripts-claimed/${token}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      // Refresh so the button disappears
+      fetchDownloads();
+    } catch (error) {
+      console.error('Error marking scripts as claimed:', error);
+    }
+    downloadPackageScripts();
   };
 
   const handleCancelDownload = async (token: string) => {
@@ -357,6 +354,8 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
                   const hasDownloadsLeft = item.remaining_downloads > 0;
                   const isCurrentlyDownloading = downloadingToken === item.token;
 
+                  const showClaimScriptsButton = !!item.last_download_at && !item.scripts_claimed;
+
                   return (
                     <div
                       key={item.id}
@@ -379,8 +378,8 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
                           </div>
                         </div>
 
-                        {/* Download Button */}
-                        <div className="flex flex-col gap-2">
+                        {/* Action Buttons */}
+                        <div className="flex flex-col gap-2 items-end">
                           <button
                             onClick={() => handleDownloadClick(item.token, item.file_name, item.remaining_downloads)}
                             disabled={!hasDownloadsLeft || isCurrentlyDownloading}
@@ -402,6 +401,16 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
                               className="text-xs text-red-400 hover:text-red-300 transition-colors"
                             >
                               Cancel Download
+                            </button>
+                          )}
+
+                          {showClaimScriptsButton && (
+                            <button
+                              onClick={() => handleClaimScripts(item.token)}
+                              className="flex items-center gap-1.5 text-xs font-semibold text-[#FF9500] hover:text-[#FF9500]/80 transition-colors border border-[#FF9500]/30 hover:border-[#FF9500]/60 px-3 py-1.5 rounded-lg bg-[#FF9500]/5 hover:bg-[#FF9500]/10"
+                            >
+                              <Package size={13} />
+                              Claim Scripts
                             </button>
                           )}
                         </div>
@@ -450,6 +459,7 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
         remainingDownloads={confirmDownload?.remainingDownloads || 0}
         onConfirm={handleConfirmDownload}
         onClose={() => setConfirmDownload(null)}
+        onClaimScripts={() => {}}
       />
 
       {/* Checkout Modal */}

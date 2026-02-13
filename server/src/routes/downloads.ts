@@ -14,6 +14,7 @@ router.post('/claim', DownloadController.claimToken);
 router.get('/my-downloads', DownloadController.myDownloads);
 router.get('/file/:token', DownloadController.downloadFile);
 router.post('/cancel/:token', DownloadController.cancelDownload);
+router.post('/mark-scripts-claimed/:token', DownloadController.markScriptsClaimed);
 
 // Admin routes
 router.post('/admin/create', requireAdmin, DownloadController.createToken);

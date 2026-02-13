@@ -78,10 +78,14 @@ export class DownloadController {
         return res.status(401).json({ error: 'Discord authentication required' });
       }
 
-      const tokens = await DownloadTokenModel.findAvailableForUser(user.discordId);
-      res.json({ 
+      const [tokens, hasActive] = await Promise.all([
+        DownloadTokenModel.findAvailableForUser(user.discordId),
+        DownloadTokenModel.hasActiveDownloadsForUser(user.discordId),
+      ]);
+      res.json({
         hasAvailableTokens: tokens.length > 0,
-        count: tokens.length 
+        hasActiveDownloads: hasActive,
+        count: tokens.length,
       });
     } catch (error) {
       console.error('Error checking available tokens:', error);
@@ -164,6 +168,29 @@ export class DownloadController {
     } catch (error) {
       console.error('Error cancelling download:', error);
       res.status(500).json({ error: 'Failed to cancel download' });
+    }
+  }
+
+  // User: Marcar scripts como claimed (após Tebex checkout)
+  static async markScriptsClaimed(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { token } = req.params;
+
+      if (!user?.discordId) {
+        return res.status(401).json({ error: 'Discord authentication required' });
+      }
+
+      const success = await DownloadTokenModel.markScriptsClaimed(token, user.discordId);
+
+      if (!success) {
+        return res.status(400).json({ error: 'Token not found, not authorized, or not yet claimed' });
+      }
+
+      res.json({ message: 'Scripts marked as claimed successfully' });
+    } catch (error) {
+      console.error('Error marking scripts as claimed:', error);
+      res.status(500).json({ error: 'Failed to mark scripts as claimed' });
     }
   }
 
