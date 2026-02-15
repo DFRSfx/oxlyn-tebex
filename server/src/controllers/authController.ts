@@ -12,10 +12,12 @@ const users: Map<string, User> = new Map();
 
 const generateToken = (user: Omit<User, 'password'>): string => {
   return jwt.sign(
-    { 
+    {
       id: user.id,
+      email: user.email,
       discordId: user.discordId,
       discordUsername: user.discordUsername,
+      discordAvatar: user.discordAvatar,
       role: user.role
     },
     process.env.JWT_SECRET || 'your_jwt_secret',
@@ -24,14 +26,39 @@ const generateToken = (user: Omit<User, 'password'>): string => {
 };
 
 // No traditional login - users login via Discord only
-export const getCurrentUser = (req: Request, res: Response) => {
+export const getCurrentUser = async (req: Request, res: Response) => {
   const tokenUser = (req as any).user;
-  
-  // Find full user data from in-memory store
-  const fullUser = users.get(tokenUser.discordId);
-  
+
+  // Try in-memory cache first (fast path)
+  let fullUser = users.get(tokenUser.discordId);
+
   if (!fullUser) {
-    return res.status(404).json({ error: 'User not found' });
+    // Server may have restarted and cleared the in-memory cache.
+    // Fall back to database lookup so valid tokens keep working.
+    try {
+      const dbUser = await UserModel.findByDiscordId(tokenUser.discordId);
+      if (!dbUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Re-populate the in-memory cache so future requests are fast
+      const adminDiscordIds = (process.env.DISCORD_ADMIN_IDS || '').split(',').filter(Boolean);
+      fullUser = {
+        id: dbUser.discord_id || String(dbUser.id),
+        email: dbUser.email,
+        password: '',
+        role: adminDiscordIds.includes(dbUser.discord_id || '') ? 'admin' : dbUser.role,
+        discordId: dbUser.discord_id,
+        discordUsername: dbUser.discord_username,
+        discordAvatar: dbUser.discord_avatar,
+        discordRoles: [],
+        createdAt: dbUser.created_at,
+      };
+      users.set(tokenUser.discordId, fullUser);
+    } catch (error) {
+      console.error('Error fetching user from database:', error);
+      return res.status(500).json({ error: 'Failed to retrieve user' });
+    }
   }
 
   // Return user without password

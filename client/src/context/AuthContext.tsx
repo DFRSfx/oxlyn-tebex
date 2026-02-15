@@ -47,26 +47,66 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      if (token) {
-        const response = await fetch(`${API_URL}/auth/me`, {
-          credentials: 'include',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data.user);
-        } else {
-          localStorage.removeItem('auth_token');
-        }
+      if (!token) {
+        setLoading(false);
+        return;
       }
+
+      // Step 1: Decode the JWT client-side immediately — no server round-trip.
+      // This restores the session instantly on every tab/reload.
+      let payload: any = null;
+      try {
+        payload = JSON.parse(atob(token.split('.')[1]));
+      } catch {
+        // Malformed token — discard it
+        localStorage.removeItem('auth_token');
+        setLoading(false);
+        return;
+      }
+
+      // If the token is expired, discard it
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem('auth_token');
+        setLoading(false);
+        return;
+      }
+
+      // Set the user immediately from the JWT payload so the UI is
+      // responsive on every tab — the server call below is just a refresh.
+      setUser({
+        id: payload.id || payload.discordId,
+        email: payload.email || `${payload.discordId}@discord.user`,
+        role: payload.role,
+        discordId: payload.discordId,
+        discordUsername: payload.discordUsername,
+        discordAvatar: payload.discordAvatar,
+      });
+      setLoading(false);
+
+      // Step 2: Verify with the server in the background to refresh any
+      // data that may have changed (role, avatar, etc.).
+      fetch(`${API_URL}/auth/me`, {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+        .then((response) => {
+          if (response.ok) {
+            return response.json().then((data) => setUser(data.user));
+          } else if (response.status === 401 || response.status === 403) {
+            // Server explicitly rejected the token — log the user out
+            localStorage.removeItem('auth_token');
+            setUser(null);
+          }
+          // 404, 500, etc.: keep the JWT-decoded user, don't touch the token
+        })
+        .catch(() => {
+          // Network error — keep the JWT-decoded user alive, don't log out
+        });
     } catch (error) {
       console.error('Auth check failed:', error);
-      localStorage.removeItem('auth_token');
-    } finally {
       setLoading(false);
     }
   };
@@ -119,7 +159,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const handleDiscordSuccess = async (token: string) => {
     try {
       localStorage.setItem('auth_token', token);
-      
+
+      // Decode JWT immediately so the user is set even if the server call fails
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUser({
+          id: payload.id || payload.discordId,
+          email: payload.email || `${payload.discordId}@discord.user`,
+          role: payload.role,
+          discordId: payload.discordId,
+          discordUsername: payload.discordUsername,
+          discordAvatar: payload.discordAvatar,
+        });
+      } catch {
+        // If decode fails, fall through to server call below
+      }
+
       const response = await fetch(`${API_URL}/auth/me`, {
         credentials: 'include',
         headers: {
@@ -128,23 +183,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         },
       });
 
-
       if (!response.ok) {
         const errorData = await response.json();
         console.error('❌ /auth/me error:', errorData);
-        throw new Error(errorData.error || 'Failed to get user info');
+        // Don't throw — the user is already set from the JWT above.
+        // The session is valid even if the server-side refresh fails.
+      } else {
+        const data = await response.json();
+        setUser(data.user);
       }
-
-      const data = await response.json();
-      setUser(data.user);
 
       // 🔗 Link CFX login to Discord if available, or just record Discord login
       const cfxIdentifier = localStorage.getItem('cfxIdentifier');
+      const discordIdForLink = (JSON.parse(atob(token.split('.')[1]))).discordId;
       try {
         if (cfxIdentifier) {
-          console.log(`🔗 [LINK] Attempting to link CFX ${cfxIdentifier} to Discord ${data.user.discordId}`);
+          console.log(`🔗 [LINK] Attempting to link CFX ${cfxIdentifier} to Discord ${discordIdForLink}`);
         } else {
-          console.log(`📊 [LOGIN] Recording Discord login for ${data.user.discordId}`);
+          console.log(`📊 [LOGIN] Recording Discord login for ${discordIdForLink}`);
         }
 
         const linkResponse = await fetch(`${API_URL}/auth/link-cfx`, {

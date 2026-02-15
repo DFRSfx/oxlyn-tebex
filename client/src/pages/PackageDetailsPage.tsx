@@ -80,9 +80,16 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
 
   // Track package view when user opens package details page
   useEffect(() => {
-    if (selectedPackage?.name) {
-      trackPackageView(selectedPackage.name);
-    }
+    if (!selectedPackage?.name) return;
+    let active = true;
+    // Defer slightly so StrictMode cleanup can cancel before the call fires
+    const timer = setTimeout(() => {
+      if (active) trackPackageView(selectedPackage.name);
+    }, 0);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [selectedPackage?.name, trackPackageView]);
 
   const fromScripts = location.state?.fromScripts || false;
@@ -110,23 +117,30 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
     }
   }, [documentation]);
 
-  // 📊 Record package view on mount/change
+  // 📊 Record package view on mount/change.
+  // AbortController ensures that React StrictMode's double-invocation only
+  // sends one request: the first fetch is aborted during cleanup, the second
+  // (real) mount completes successfully.
   useEffect(() => {
-    if (selectedPackage?.name) {
-      const recordView = async () => {
-        try {
-          await fetch(`${API_URL}/orders/stats/record-view`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ packageName: selectedPackage.name })
-          });
-        } catch (error) {
-          console.error(`❌ [STATS] Failed to record package view:`, error);
-        }
-      };
-      recordView();
-    }
+    if (!selectedPackage?.name) return;
+
+    const controller = new AbortController();
+
+    fetch(`${API_URL}/orders/stats/record-view`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ packageName: selectedPackage.name }),
+      signal: controller.signal,
+    }).catch(error => {
+      if (error.name !== 'AbortError') {
+        console.error(`❌ [STATS] Failed to record package view:`, error);
+      }
+    });
+
+    return () => {
+      controller.abort();
+    };
   }, [selectedPackage?.name]);
 
   if (!selectedPackage || !selectedVersion) {

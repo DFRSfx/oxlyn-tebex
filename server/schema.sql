@@ -158,6 +158,12 @@ DELETE FROM `package_stats`;
 INSERT INTO `package_stats` (`id`, `package_name`, `view_count`, `cart_count`, `last_viewed_at`, `last_added_to_cart_at`, `created_at`, `updated_at`) VALUES
 	(1, 'Notify System', 3, 0, '2026-01-04 03:02:58', NULL, '2026-01-04 02:29:17', '2026-01-04 03:02:58');
 
+-- Migração: normalizar nomes de pacotes existentes (remover sufixos de versão)
+-- Se houver entradas duplicadas após normalização, consolidar as contagens
+UPDATE `package_stats`
+SET `package_name` = TRIM(REGEXP_REPLACE(`package_name`, '\\s*\\((OPEN-SOURCE|ESCROWED|Open Source|Escrow|open-source)\\)', ''))
+WHERE `package_name` REGEXP '\\((OPEN-SOURCE|ESCROWED|Open Source|Escrow|open-source)\\)';
+
 -- A despejar estrutura para tabela oxlyn_tebex.package_views
 CREATE TABLE IF NOT EXISTS `package_views` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -185,93 +191,93 @@ CREATE TABLE IF NOT EXISTS `sessions` (
 -- A despejar dados para tabela oxlyn_tebex.sessions: ~0 rows (aproximadamente)
 DELETE FROM `sessions`;
 
--- A despejar estrutura para tabela oxlyn_tebex.analytics_events
-CREATE TABLE IF NOT EXISTS `analytics_events` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `event_id` varchar(36) NOT NULL,
-  `event_type` varchar(50) NOT NULL,
-  `session_id` varchar(36) NOT NULL,
-  `user_id` int(11) DEFAULT NULL,
-  `discord_id` varchar(255) DEFAULT NULL,
-  `page_url` text NOT NULL,
-  `package_name` varchar(255) DEFAULT NULL,
-  `device_type` enum('mobile','tablet','desktop') DEFAULT NULL,
-  `browser` varchar(100) DEFAULT NULL,
-  `country` varchar(2) DEFAULT NULL,
-  `ip_address` varchar(45) DEFAULT NULL,
-  `event_data` json DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `event_id` (`event_id`),
-  KEY `idx_session_id` (`session_id`),
-  KEY `idx_event_type` (`event_type`),
-  KEY `idx_created_at` (`created_at`),
-  KEY `idx_package_name` (`package_name`),
-  KEY `idx_country` (`country`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  -- A despejar estrutura para tabela oxlyn_tebex.analytics_events
+  CREATE TABLE IF NOT EXISTS `analytics_events` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `event_id` varchar(36) NOT NULL,
+    `event_type` varchar(50) NOT NULL,
+    `session_id` varchar(36) NOT NULL,
+    `user_id` int(11) DEFAULT NULL,
+    `discord_id` varchar(255) DEFAULT NULL,
+    `page_url` text NOT NULL,
+    `package_name` varchar(255) DEFAULT NULL,
+    `device_type` enum('mobile','tablet','desktop') DEFAULT NULL,
+    `browser` varchar(100) DEFAULT NULL,
+    `country` varchar(2) DEFAULT NULL,
+    `ip_address` varchar(45) DEFAULT NULL,
+    `event_data` json DEFAULT NULL,
+    `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `event_id` (`event_id`),
+    KEY `idx_session_id` (`session_id`),
+    KEY `idx_event_type` (`event_type`),
+    KEY `idx_created_at` (`created_at`),
+    KEY `idx_package_name` (`package_name`),
+    KEY `idx_country` (`country`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- A despejar dados para tabela oxlyn_tebex.analytics_events: ~0 rows (aproximadamente)
-DELETE FROM `analytics_events`;
+  -- A despejar dados para tabela oxlyn_tebex.analytics_events: ~0 rows (aproximadamente)
+  DELETE FROM `analytics_events`;
 
--- A despejar estrutura para tabela oxlyn_tebex.analytics_sessions
-CREATE TABLE IF NOT EXISTS `analytics_sessions` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `session_id` varchar(36) NOT NULL,
-  `user_id` int(11) DEFAULT NULL,
-  `started_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `ended_at` timestamp NULL DEFAULT NULL,
-  `duration_seconds` int(11) DEFAULT 0,
-  `page_views` int(11) DEFAULT 0,
-  `cart_additions` int(11) DEFAULT 0,
-  `is_bounce` tinyint(1) DEFAULT 0,
-  `is_converted` tinyint(1) DEFAULT 0,
-  `device_type` enum('mobile','tablet','desktop') DEFAULT NULL,
-  `country` varchar(2) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `session_id` (`session_id`),
-  KEY `idx_started_at` (`started_at`),
-  KEY `idx_is_bounce` (`is_bounce`),
-  KEY `idx_is_converted` (`is_converted`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  -- A despejar estrutura para tabela oxlyn_tebex.analytics_sessions
+  CREATE TABLE IF NOT EXISTS `analytics_sessions` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `session_id` varchar(36) NOT NULL,
+    `user_id` int(11) DEFAULT NULL,
+    `started_at` timestamp NOT NULL DEFAULT current_timestamp(),
+    `ended_at` timestamp NULL DEFAULT NULL,
+    `duration_seconds` int(11) DEFAULT 0,
+    `page_views` int(11) DEFAULT 0,
+    `cart_additions` int(11) DEFAULT 0,
+    `is_bounce` tinyint(1) DEFAULT 0,
+    `is_converted` tinyint(1) DEFAULT 0,
+    `device_type` enum('mobile','tablet','desktop') DEFAULT NULL,
+    `country` varchar(2) DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `session_id` (`session_id`),
+    KEY `idx_started_at` (`started_at`),
+    KEY `idx_is_bounce` (`is_bounce`),
+    KEY `idx_is_converted` (`is_converted`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- A despejar dados para tabela oxlyn_tebex.analytics_sessions: ~0 rows (aproximadamente)
-DELETE FROM `analytics_sessions`;
+  -- A despejar dados para tabela oxlyn_tebex.analytics_sessions: ~0 rows (aproximadamente)
+  DELETE FROM `analytics_sessions`;
 
--- A despejar estrutura para tabela oxlyn_tebex.analytics_page_views
-CREATE TABLE IF NOT EXISTS `analytics_page_views` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `session_id` varchar(36) NOT NULL,
-  `page_url` varchar(500) NOT NULL,
-  `time_on_page_seconds` int(11) DEFAULT 0,
-  `view_count` int(11) DEFAULT 1,
-  `viewed_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `last_viewed_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_session_page` (`session_id`, `page_url`),
-  KEY `idx_session_id` (`session_id`),
-  KEY `idx_viewed_at` (`viewed_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  -- A despejar estrutura para tabela oxlyn_tebex.analytics_page_views
+  CREATE TABLE IF NOT EXISTS `analytics_page_views` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `session_id` varchar(36) NOT NULL,
+    `page_url` varchar(500) NOT NULL,
+    `time_on_page_seconds` int(11) DEFAULT 0,
+    `view_count` int(11) DEFAULT 1,
+    `viewed_at` timestamp NOT NULL DEFAULT current_timestamp(),
+    `last_viewed_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_session_page` (`session_id`, `page_url`),
+    KEY `idx_session_id` (`session_id`),
+    KEY `idx_viewed_at` (`viewed_at`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- A despejar dados para tabela oxlyn_tebex.analytics_page_views: ~0 rows (aproximadamente)
-DELETE FROM `analytics_page_views`;
+  -- A despejar dados para tabela oxlyn_tebex.analytics_page_views: ~0 rows (aproximadamente)
+  DELETE FROM `analytics_page_views`;
 
--- A despejar estrutura para tabela oxlyn_tebex.analytics_conversions
-CREATE TABLE IF NOT EXISTS `analytics_conversions` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `session_id` varchar(36) NOT NULL,
-  `package_name` varchar(255) NOT NULL,
-  `viewed_at` timestamp NULL DEFAULT NULL,
-  `added_to_cart_at` timestamp NULL DEFAULT NULL,
-  `purchased_at` timestamp NULL DEFAULT NULL,
-  `funnel_stage` enum('view','cart','purchase') NOT NULL,
-  `price` decimal(10,2) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_package_name` (`package_name`),
-  KEY `idx_funnel_stage` (`funnel_stage`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  -- A despejar estrutura para tabela oxlyn_tebex.analytics_conversions
+  CREATE TABLE IF NOT EXISTS `analytics_conversions` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `session_id` varchar(36) NOT NULL,
+    `package_name` varchar(255) NOT NULL,
+    `viewed_at` timestamp NULL DEFAULT NULL,
+    `added_to_cart_at` timestamp NULL DEFAULT NULL,
+    `purchased_at` timestamp NULL DEFAULT NULL,
+    `funnel_stage` enum('view','cart','purchase') NOT NULL,
+    `price` decimal(10,2) DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_package_name` (`package_name`),
+    KEY `idx_funnel_stage` (`funnel_stage`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- A despejar dados para tabela oxlyn_tebex.analytics_conversions: ~0 rows (aproximadamente)
-DELETE FROM `analytics_conversions`;
+  -- A despejar dados para tabela oxlyn_tebex.analytics_conversions: ~0 rows (aproximadamente)
+  DELETE FROM `analytics_conversions`;
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;

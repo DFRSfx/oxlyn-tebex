@@ -44,6 +44,7 @@ app.use(cookieParser());
 
 // Apply different rate limiters based on route
 app.use('/api/analytics', analyticsRateLimiter);
+app.use('/api/statistics', analyticsRateLimiter);
 app.use(rateLimiter);
 
 // Health check

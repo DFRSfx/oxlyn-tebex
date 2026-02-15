@@ -244,9 +244,22 @@ export interface PackageStat {
   updated_at: Date;
 }
 
+// Normaliza o nome do pacote removendo sufixos de versão (OPEN-SOURCE, ESCROWED, etc.)
+// para que ambas as variantes sejam contabilizadas juntas
+function normalizePackageName(name: string): string {
+  return name
+    .replace(/\s*\(OPEN-SOURCE\)/gi, '')
+    .replace(/\s*\(ESCROWED\)/gi, '')
+    .replace(/\s*\(Open Source\)/gi, '')
+    .replace(/\s*\(Escrow\)/gi, '')
+    .replace(/\s*\(open-source\)/gi, '')
+    .trim();
+}
+
 export class PackageStatsModel {
   // Registrar visualização de pacote
   static async recordPackageView(packageName: string, userId?: number, discordId?: string): Promise<void> {
+    packageName = normalizePackageName(packageName);
     // Atualizar package_stats
     const [existing] = await pool.query(
       'SELECT * FROM package_stats WHERE package_name = ?',
@@ -279,6 +292,7 @@ export class PackageStatsModel {
 
   // Registrar pacote adicionado ao carrinho
   static async recordAddToCart(packageName: string, userId?: number, discordId?: string): Promise<void> {
+    packageName = normalizePackageName(packageName);
     // Atualizar package_stats
     const [existing] = await pool.query(
       'SELECT * FROM package_stats WHERE package_name = ?',
@@ -320,6 +334,7 @@ export class PackageStatsModel {
 
   // Obter estatísticas de um pacote específico
   static async getPackageStats(packageName: string): Promise<PackageStat | null> {
+    packageName = normalizePackageName(packageName);
     const [rows] = await pool.query(
       'SELECT * FROM package_stats WHERE package_name = ?',
       [packageName]

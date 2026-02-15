@@ -325,7 +325,7 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-white">€{order.price.toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-white">€{Number(order.price).toFixed(2)}</p>
                   <span className={`inline-block text-xs font-semibold px-2 py-1 rounded mt-1 ${
                     order.status === 'completed'
                       ? 'bg-emerald-500/20 text-emerald-400'

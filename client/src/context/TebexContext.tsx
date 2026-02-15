@@ -61,6 +61,17 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
 
+  // Clears only FiveM/basket-related keys from localStorage.
+  // Never touches auth_token or other unrelated keys.
+  const clearTebexStorage = () => {
+    localStorage.removeItem('basketIdent');
+    localStorage.removeItem('basketData');
+    localStorage.removeItem('cfxUserData');
+    localStorage.removeItem('cartItems');
+    localStorage.removeItem('appliedCoupon');
+    localStorage.removeItem('authUrl');
+  };
+
   const fetchCFXUserInfo = async (usernameId: string): Promise<{ username: string; avatar_template: string } | null> => {
     try {
       const userInfo = await tebexService.fetchCFXUserInfo(usernameId);
@@ -98,7 +109,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
             };
             
             setCfxUserData(userData);
-            sessionStorage.setItem('cfxUserData', JSON.stringify(userData));
+            localStorage.setItem('cfxUserData', JSON.stringify(userData));
           }
         }
       }
@@ -136,15 +147,15 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
       try {
         const urlParams = new URLSearchParams(window.location.search);
         const success = urlParams.get('success');
-        const storedBasketIdent = sessionStorage.getItem('basketIdent');
+        const storedBasketIdent = localStorage.getItem('basketIdent');
 
         if (success === 'true' && storedBasketIdent) {
           // Handle successful auth redirect
           setBasketIdent(storedBasketIdent);
           setIsLoggedIn(true);
 
-          // Restore applied coupon from session if it exists
-          const storedAppliedCoupon = sessionStorage.getItem('appliedCoupon');
+          // Restore applied coupon from storage if it exists
+          const storedAppliedCoupon = localStorage.getItem('appliedCoupon');
           if (storedAppliedCoupon) {
             setAppliedCoupon(JSON.parse(storedAppliedCoupon));
           }
@@ -154,7 +165,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
 
           if (basketData?.data) {
             // Store complete basket data
-            sessionStorage.setItem('basketData', JSON.stringify(basketData));
+            localStorage.setItem('basketData', JSON.stringify(basketData));
 
             // Extract and store user information
             if (basketData.data.username_id) {
@@ -168,9 +179,9 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
                   user_id: parseInt(basketData.data.username_id) || 0,
                 };
                 setCfxUserData(userData);
-                sessionStorage.setItem('cfxUserData', JSON.stringify(userData));
+                localStorage.setItem('cfxUserData', JSON.stringify(userData));
 
-                // 📊 Record CFX login in statistics (only once)
+                // 📊 Record CFX login in statistics (only once per redirect)
                 const cfxStatsRecorded = sessionStorage.getItem('cfxStatsRecorded');
                 if (!cfxStatsRecorded) {
                   await recordCfxLoginStats(basketData.data.username_id);
@@ -184,12 +195,12 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
 
           const items = await tebexService.fetchCartData(storedBasketIdent);
           setCartItems(items);
-          sessionStorage.setItem('cartItems', JSON.stringify(items));
+          localStorage.setItem('cartItems', JSON.stringify(items));
         } else {
-          // Standard initialization from session
-          const storedBasketData = sessionStorage.getItem('basketData');
-          const storedCfxData = sessionStorage.getItem('cfxUserData');
-          const storedAppliedCoupon = sessionStorage.getItem('appliedCoupon');
+          // Standard initialization — restore from localStorage (works across tabs)
+          const storedBasketData = localStorage.getItem('basketData');
+          const storedCfxData = localStorage.getItem('cfxUserData');
+          const storedAppliedCoupon = localStorage.getItem('appliedCoupon');
 
           if (storedBasketData && storedCfxData) {
             const basketData: BasketData = JSON.parse(storedBasketData);
@@ -212,27 +223,27 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
 
                   const items = await tebexService.fetchCartData(ident);
                   setCartItems(items);
-                  sessionStorage.setItem('cartItems', JSON.stringify(items));
+                  localStorage.setItem('cartItems', JSON.stringify(items));
                 } else {
                   // Basket is invalid or expired, clear session
                   console.log('⚠️ Basket expired or invalid, clearing session');
-                  sessionStorage.clear();
+                  clearTebexStorage();
                 }
               } catch (error) {
                 // Error validating basket, clear session
                 console.log('⚠️ Error validating basket, clearing session');
-                sessionStorage.clear();
+                clearTebexStorage();
               }
             }
           } else {
-            const storedCartItems = sessionStorage.getItem('cartItems');
+            const storedCartItems = localStorage.getItem('cartItems');
             if (storedCartItems) {
               setCartItems(JSON.parse(storedCartItems));
             }
           }
         }
       } catch (error) {
-        sessionStorage.clear(); // Clear potentially corrupted data
+        clearTebexStorage(); // Clear potentially corrupted data
       } finally {
         // Clean URL params
         if (window.location.search) {
@@ -247,8 +258,8 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
   }, []);
 
   const storeBasketData = (data: BasketData) => {
-    sessionStorage.setItem('basketData', JSON.stringify(data));
-    sessionStorage.setItem('basketIdent', data.data.ident);
+    localStorage.setItem('basketData', JSON.stringify(data));
+    localStorage.setItem('basketIdent', data.data.ident);
     setBasketIdent(data.data.ident);
   };
 
@@ -272,7 +283,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
         const authUrl = await tebexService.fetchAuthUrl(basketData.data.ident);
 
         if (authUrl) {
-          sessionStorage.setItem('authUrl', authUrl);
+          localStorage.setItem('authUrl', authUrl);
           window.location.href = authUrl;
         } else {
           setIsLoading(false); // Stop loading if auth URL fails
@@ -286,7 +297,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
-    sessionStorage.clear();
+    clearTebexStorage();
     setIsLoggedIn(false);
     setCartItems([]);
     setBasketIdent(null);
@@ -340,7 +351,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
         
         console.log(`✅ [CART] Merged cart items:`, mergedItems.length, 'total items');
         setCartItems(mergedItems);
-        sessionStorage.setItem('cartItems', JSON.stringify(mergedItems));
+        localStorage.setItem('cartItems', JSON.stringify(mergedItems));
 
         window.dispatchEvent(
           new CustomEvent('cartUpdated', {
@@ -372,7 +383,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
       if (success) {
         const updatedItems = cartItems.filter((item) => item.id !== packageId);
         setCartItems(updatedItems);
-        sessionStorage.setItem('cartItems', JSON.stringify(updatedItems));
+        localStorage.setItem('cartItems', JSON.stringify(updatedItems));
 
         window.dispatchEvent(
           new CustomEvent('cartUpdated', {
@@ -440,7 +451,7 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
     const hasChanges = enrichedItems.some((item, idx) => item.category !== cartItems[idx].category);
     if (hasChanges) {
       setCartItems(enrichedItems);
-      sessionStorage.setItem('cartItems', JSON.stringify(enrichedItems));
+      localStorage.setItem('cartItems', JSON.stringify(enrichedItems));
     }
   };
 
@@ -474,13 +485,13 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
           code: code.trim().toUpperCase(),
           discountAmount: -realDiscountAmount // Negative to match existing convention
         });
-        sessionStorage.setItem('appliedCoupon', JSON.stringify({
+        localStorage.setItem('appliedCoupon', JSON.stringify({
           code: code.trim().toUpperCase(),
           discountAmount: -realDiscountAmount
         }));
 
         setCartItems(updatedItems);
-        sessionStorage.setItem('cartItems', JSON.stringify(updatedItems));
+        localStorage.setItem('cartItems', JSON.stringify(updatedItems));
 
         window.dispatchEvent(
           new CustomEvent('cartUpdated', {
@@ -532,12 +543,12 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
         if (result.success) {
           // Clear applied coupon
           setAppliedCoupon(null);
-          sessionStorage.removeItem('appliedCoupon');
+          localStorage.removeItem('appliedCoupon');
 
           // Update cart items from the response
           const updatedItems = await tebexService.fetchCartData(basketIdent);
           setCartItems(updatedItems);
-          sessionStorage.setItem('cartItems', JSON.stringify(updatedItems));
+          localStorage.setItem('cartItems', JSON.stringify(updatedItems));
 
           window.dispatchEvent(
             new CustomEvent('cartUpdated', {
