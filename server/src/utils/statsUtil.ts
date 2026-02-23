@@ -1,4 +1,5 @@
 import { LoginStatsModel, PackageStatsModel } from '../models/statistics';
+import { analyticsLogger } from './analyticsLogger';
 
 /**
  * Utility para registrar eventos de estatísticas
@@ -60,9 +61,9 @@ export class StatsUtil {
    */
   static async recordPackageView(packageName: string, userId?: number, discordId?: string) {
     try {
-      console.log(`👁️  [PACKAGE_VIEW] Recording view for package: ${packageName} (user_id: ${userId || 'anon'}, discord_id: ${discordId || 'anon'})`);
+      analyticsLogger.log(`👁️  [PACKAGE_VIEW] Recording view for package: ${packageName} (user_id: ${userId || 'anon'}, discord_id: ${discordId || 'anon'})`);
       await PackageStatsModel.recordPackageView(packageName, userId, discordId);
-      console.log(`✅ [PACKAGE_VIEW] Successfully recorded: ${packageName}`);
+      analyticsLogger.log(`✅ [PACKAGE_VIEW] Successfully recorded: ${packageName}`);
     } catch (error) {
       console.error(`❌ [PACKAGE_VIEW] Error recording package view:`, error);
     }

@@ -1,4 +1,5 @@
 import geoip from 'geoip-lite';
+import { analyticsLogger } from '../utils/analyticsLogger';
 
 export interface GeoLocation {
   country: string | null;
@@ -14,7 +15,7 @@ export interface GeoLocation {
  * @returns GeoLocation object with country, region, city, coordinates, and timezone
  */
 export function getGeoLocationFromIP(ipAddress: string): GeoLocation {
-  console.log('🌍 [GeoIP] Lookup for IP:', ipAddress);
+  analyticsLogger.log('🌍 [GeoIP] Lookup for IP: ' + ipAddress);
 
   // Handle localhost and private IPs
   if (
@@ -25,7 +26,7 @@ export function getGeoLocationFromIP(ipAddress: string): GeoLocation {
     ipAddress.startsWith('10.') ||
     ipAddress.startsWith('172.')
   ) {
-    console.log('🌍 [GeoIP] Private/Local IP detected, returning null');
+    analyticsLogger.log('🌍 [GeoIP] Private/Local IP detected, returning null');
     return {
       country: null,
       region: null,
@@ -37,13 +38,13 @@ export function getGeoLocationFromIP(ipAddress: string): GeoLocation {
 
   // Remove IPv6 prefix if present (e.g., ::ffff:192.168.1.1)
   const cleanIP = ipAddress.replace(/^::ffff:/, '');
-  console.log('🌍 [GeoIP] Clean IP:', cleanIP);
+  analyticsLogger.log('🌍 [GeoIP] Clean IP: ' + cleanIP);
 
   const geo = geoip.lookup(cleanIP);
-  console.log('🌍 [GeoIP] Result:', geo);
+  analyticsLogger.log('🌍 [GeoIP] Result:', geo);
 
   if (!geo) {
-    console.log('🌍 [GeoIP] No geolocation data found');
+    analyticsLogger.log('🌍 [GeoIP] No geolocation data found');
     return {
       country: null,
       region: null,
@@ -100,7 +101,7 @@ export function extractIPFromRequest(req: any): string {
       // Use Google's public DNS IP as test (US-based)
       // You can change this to any public IP for testing
       const testIP = process.env.TEST_IP || '8.8.8.8';
-      console.log(`🧪 [DEV] Simulating public IP: ${testIP} (real: ${ip})`);
+      analyticsLogger.log(`🧪 [DEV] Simulating public IP: ${testIP} (real: ${ip})`);
       return testIP;
     }
   }

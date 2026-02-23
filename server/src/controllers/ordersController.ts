@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { pool } from '../config/database.js';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { StatsUtil } from '../utils/statsUtil.js';
+import { analyticsLogger } from '../utils/analyticsLogger.js';
 
 interface Order extends RowDataPacket {
   id: number;
@@ -92,10 +93,10 @@ export const recordPackageView = async (req: Request, res: Response, next: NextF
       return res.status(400).json({ error: 'packageName is required' });
     }
 
-    console.log(`📊 [VIEW] Recording package view: ${packageName}`);
+    analyticsLogger.log(`📊 [VIEW] Recording package view: ${packageName}`);
 
     await StatsUtil.recordPackageView(packageName, user?.id, user?.discordId);
-    console.log(`✅ [STATS] Package view recorded: ${packageName}`);
+    analyticsLogger.log(`✅ [STATS] Package view recorded: ${packageName}`);
 
     res.json({ success: true, message: 'Package view recorded' });
   } catch (error) {

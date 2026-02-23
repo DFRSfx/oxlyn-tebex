@@ -7,6 +7,7 @@ import {
   AnalyticsDashboardModel,
 } from '../models/analytics';
 import { enrichEvent, enrichSessionInfo, calculatePeriod } from '../services/analyticsService';
+import { analyticsLogger } from '../utils/analyticsLogger';
 
 export class AnalyticsController {
   // ==================== TRACKING ENDPOINTS (PUBLIC) ====================
@@ -23,18 +24,18 @@ export class AnalyticsController {
         });
       }
 
-      // Debug: Log raw incoming events
-      console.log('📥 [Analytics] Raw incoming events:', JSON.stringify(events, null, 2));
+      // Log raw incoming events to file
+      analyticsLogger.log('📥 [Analytics] Raw incoming events:', events);
 
       // Enrich each event with server-side data
       const enrichedEvents = events.map((event) => {
-        console.log('📥 [Analytics] Processing event:', JSON.stringify(event, null, 2));
+        analyticsLogger.log('📥 [Analytics] Processing event:', event);
         const enriched = enrichEvent(event, req);
-        console.log('✨ [Analytics] Enriched event:', JSON.stringify(enriched, null, 2));
+        analyticsLogger.log('✨ [Analytics] Enriched event:', enriched);
         return enriched;
       });
 
-      console.log('📤 [Analytics] Final enriched events to insert:', JSON.stringify(enrichedEvents, null, 2));
+      analyticsLogger.log('📤 [Analytics] Final enriched events to insert:', enrichedEvents);
 
       // Batch insert into database
       await AnalyticsEventsModel.batchInsertEvents(enrichedEvents);
@@ -93,8 +94,8 @@ export class AnalyticsController {
 
       const enrichedSession = enrichSessionInfo(sessionInfo, req);
 
-      // Debug logging
-      console.log('📍 [Session Start Debug]', {
+      // Debug logging to file
+      analyticsLogger.log('📍 [Session Start Debug]', {
         ip: req.ip,
         headers: {
           'x-forwarded-for': req.headers['x-forwarded-for'],
