@@ -423,9 +423,6 @@ class TebexService {
       }
 
       const data: PackageListResponse = await response.json();
-      const fpsPackages = data.data?.filter(p => p.name?.toLowerCase().includes('fps')) || [];
-      console.log('🖼️ [DEBUG] FPS package raw:', fpsPackages[0]);
-      console.log('🖼️ [DEBUG] FPS media field:', fpsPackages[0]?.media);
 
       return data.data || [];
     } catch (error) {

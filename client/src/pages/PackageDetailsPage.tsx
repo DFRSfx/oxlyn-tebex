@@ -400,7 +400,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                                         </div>
                                     </div>
                                     <div className="text-xl font-bold text-white">
-                                        €{escrowVersion.price.toFixed(2)}
+                                        {escrowVersion.price === 0 ? 'Free' : `€${escrowVersion.price.toFixed(2)}`}
                                     </div>
                                 </div>
                             </div>
@@ -423,7 +423,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                                         </div>
                                     </div>
                                     <div className="text-xl font-bold text-white">
-                                        €{openSourceVersion.price.toFixed(2)}
+                                        {openSourceVersion.price === 0 ? 'Free' : `€${openSourceVersion.price.toFixed(2)}`}
                                     </div>
                                 </div>
                             </div>
