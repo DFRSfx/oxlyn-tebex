@@ -1,4 +1,4 @@
-import { Package } from '../types';
+import { Package, PackageMedia } from '../types';
 import { TebexPackageDetails } from '../services/tebexService';
 
 /**
@@ -42,12 +42,17 @@ export function mapTebexPackageToPackage(tebexPackage: TebexPackageDetails): Pac
     id: `package-${tebexPackage.id}`,
     name: tebexPackage.name,
     image: tebexPackage.image || 'https://i.imgur.com/LVePQtC.jpeg',
-    images: tebexPackage.image ? [tebexPackage.image] : ['https://i.imgur.com/LVePQtC.jpeg'],
+    images: tebexPackage.media && tebexPackage.media.length > 0
+      ? tebexPackage.media.map(m => m.url)
+      : tebexPackage.image
+        ? [tebexPackage.image]
+        : ['https://i.imgur.com/LVePQtC.jpeg'],
     price: priceValue,
     originalPrice: originalPrice,
     frameworks: frameworks.length > 0 ? frameworks : ['QBCORE', 'QBOX', 'ESX'],
     description: cleanDesc,
     fullDescription: cleanDesc,
+    media: tebexPackage.media as PackageMedia[] | undefined,
     tebexPackageId: tebexPackage.id,
     category: tebexPackage.category,
   };

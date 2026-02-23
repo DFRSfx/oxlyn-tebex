@@ -60,11 +60,19 @@ export interface CartItem {
   };
 }
 
+export interface TebexPackageMedia {
+  type: string;
+  name: string;
+  url: string;
+}
+
 export interface TebexPackageDetails {
   id: number;
   name: string;
   description: string;
   image?: string;
+  images?: string[];
+  media?: TebexPackageMedia[];
   price?: {
     value: number;
     currency: string;
@@ -415,13 +423,10 @@ class TebexService {
       }
 
       const data: PackageListResponse = await response.json();
-      //console.log('✅ Raw Tebex packages response:', data);
-      //console.log('📦 Number of packages:', data.data?.length || 0);
-      
-      if (data.data && data.data.length > 0) {
-        //console.log('📋 First package sample:', data.data[0]);
-      }
-      
+      const fpsPackages = data.data?.filter(p => p.name?.toLowerCase().includes('fps')) || [];
+      console.log('🖼️ [DEBUG] FPS package raw:', fpsPackages[0]);
+      console.log('🖼️ [DEBUG] FPS media field:', fpsPackages[0]?.media);
+
       return data.data || [];
     } catch (error) {
       console.error('❌ Error fetching packages:', error);

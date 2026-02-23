@@ -21,11 +21,22 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
   const [isAdding, setIsAdding] = useState(false);
   const [currentProductImageIndex, setCurrentProductImageIndex] = useState(0);
 
-  // Try to get package from location state first, then fallback to finding by slug
-  const selectedPackage: Package | undefined = location.state?.package || packages.find(pkg => {
-    const slug = pkg.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    return slug === productSlug;
-  });
+  // Always resolve from fresh packages prop (has up-to-date media/images).
+  // location.state?.package is only used as a last resort if packages haven't loaded yet.
+  const statePackage: Package | undefined = location.state?.package;
+  const selectedPackage: Package | undefined =
+    packages.find(pkg => {
+      if (statePackage?.tebexPackageId) {
+        return pkg.tebexPackageId === statePackage.tebexPackageId;
+      }
+      const slug = pkg.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      return slug === productSlug;
+    }) ||
+    packages.find(pkg => {
+      const slug = pkg.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      return slug === productSlug;
+    }) ||
+    statePackage;
 
   // Find all package variants (Escrow and Open Source)
   const getBaseName = (name: string) => {
@@ -157,15 +168,28 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
     }
   }, [selectedVersion?.tebexPackageId, isInCart]);
 
+  const mediaItems = selectedPackage.media ?? selectedPackage.images?.map(url => ({ type: 'image', name: '', url })) ?? [];
+
+  const [isFading, setIsFading] = useState(false);
+
+  const changeImage = (newIndex: number) => {
+    if (newIndex === currentProductImageIndex) return;
+    setIsFading(true);
+    setTimeout(() => {
+      setCurrentProductImageIndex(newIndex);
+      setIsFading(false);
+    }, 200);
+  };
+
   const nextProductImage = () => {
-    if (selectedPackage.images) {
-      setCurrentProductImageIndex((currentProductImageIndex + 1) % selectedPackage.images.length);
+    if (mediaItems.length > 1) {
+      changeImage((currentProductImageIndex + 1) % mediaItems.length);
     }
   };
 
   const prevProductImage = () => {
-    if (selectedPackage.images) {
-      setCurrentProductImageIndex((currentProductImageIndex - 1 + selectedPackage.images.length) % selectedPackage.images.length);
+    if (mediaItems.length > 1) {
+      changeImage((currentProductImageIndex - 1 + mediaItems.length) % mediaItems.length);
     }
   };
 
@@ -213,25 +237,28 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
             <div className="rounded-xl overflow-hidden bg-black border border-zinc-800 shadow-2xl shadow-black/50 group relative">
                 <div className="aspect-video relative">
                     <img
-                        src={selectedPackage.images![currentProductImageIndex]}
+                        src={mediaItems[currentProductImageIndex]?.url ?? selectedPackage.image}
                         alt={selectedPackage.name}
                         className="w-full h-full object-cover"
                     />
-                    
+
+                    {/* Fade-to-black transition overlay */}
+                    <div className={`absolute inset-0 bg-black pointer-events-none transition-opacity duration-200 ${isFading ? 'opacity-100' : 'opacity-0'}`} />
+
                     {/* Dark gradient overlay at bottom for cinematic feel */}
                     <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
 
-                    {selectedPackage.images!.length > 1 && (
+                    {mediaItems.length > 1 && (
                         <>
                         <button
                             onClick={prevProductImage}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 backdrop-blur-sm border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 backdrop-blur-sm border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all opacity-0 group-hover:opacity-100"
                         >
                             <ChevronLeft className="w-5 h-5" />
                         </button>
                         <button
                             onClick={nextProductImage}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 backdrop-blur-sm border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 backdrop-blur-sm border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all opacity-0 group-hover:opacity-100"
                         >
                             <ChevronRight className="w-5 h-5" />
                         </button>
@@ -241,19 +268,19 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
             </div>
 
             {/* Thumbnails */}
-            {selectedPackage.images && selectedPackage.images.length > 1 && (
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-700">
-                {selectedPackage.images.map((image, index) => (
+            {mediaItems.length > 1 && (
+                <div className="flex gap-3 mt-4 overflow-x-auto py-2 px-1 scrollbar-thin scrollbar-thumb-zinc-700">
+                {mediaItems.map((item, index) => (
                     <button
                     key={index}
-                    onClick={() => setCurrentProductImageIndex(index)}
-                    className={`relative w-24 md:w-32 aspect-video rounded-lg overflow-hidden flex-shrink-0 transition-all ${
+                    onClick={() => changeImage(index)}
+                    className={`relative aspect-video rounded-lg border-2 transition-all duration-300 hover:shadow-xl flex-shrink-0 w-28 lg:w-36 ${
                         index === currentProductImageIndex
-                        ? 'ring-2 ring-primary-orange ring-offset-2 ring-offset-[#09090b] opacity-100'
-                        : 'opacity-50 hover:opacity-100'
+                        ? 'border-primary-orange shadow-sm shadow-primary-orange/40 scale-105 ring-2 ring-primary-orange/30 opacity-100'
+                        : 'border-white/10 shadow-sm opacity-60 hover:opacity-100 hover:scale-105 hover:border-white/30 hover:shadow-white/10'
                     }`}
                     >
-                    <img src={image} alt="" className="w-full h-full object-cover" />
+                    <img src={item.url} alt="" className="w-full h-full object-cover rounded-md" />
                     </button>
                 ))}
                 </div>
@@ -340,7 +367,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                     </div>
                 ) : (
                     <div className="bg-zinc-900/50 rounded-xl p-8 text-center border border-zinc-800">
-                        <p className="text-zinc-500">Full documentation is available after purchase.</p>
+                        <p className="text-zinc-500">Full documentation will be available in the future.</p>
                     </div>
                 )}
             </div>

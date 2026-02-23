@@ -1,8 +1,15 @@
+export interface PackageMedia {
+  type: string;
+  name: string;
+  url: string;
+}
+
 export interface Package {
   id: string;
   name: string;
   image: string;
   images?: string[];
+  media?: PackageMedia[];
   price: number;
   originalPrice: number;
   frameworks: string[];
