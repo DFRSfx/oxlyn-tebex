@@ -153,7 +153,7 @@ const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoad
             </div>
             <div className="text-right min-w-[100px]">
               <div className="text-primary-orange font-bold text-lg">
-                €{pkg.price.toFixed(2)}
+                 {pkg.price === 0 ? 'Free' : `${pkg.price.toFixed(2)}€`}
               </div>
               {discount > 0 && (
                 <div className="text-neutral-500 line-through text-xs" style={{color: '#CD5C5C'}}>

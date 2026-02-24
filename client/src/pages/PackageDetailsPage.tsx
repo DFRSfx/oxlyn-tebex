@@ -351,8 +351,9 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                     })()}
                 </div>
             </div>
-            
+           
             {/* Documentation Tabs Area */}
+            {(docsLoading || documentation) && (
             <div className="pt-8 border-t border-zinc-800">
                  <div className="w-full mb-8">
                     <h2 className="text-3xl font-bold mb-4">Detailed Breakdown</h2>
@@ -361,16 +362,13 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
 
                 {docsLoading ? (
                     <div className="h-40 flex items-center justify-center text-zinc-500 bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800">Loading details...</div>
-                ) : documentation ? (
-                    <div className="bg-[#0e0e10] border border-zinc-800 rounded-2xl p-2">
-                        <DocumentationTabs resource={documentation} />
-                    </div>
                 ) : (
-                    <div className="bg-zinc-900/50 rounded-xl p-8 text-center border border-zinc-800">
-                        <p className="text-zinc-500">Full documentation will be available in the future.</p>
+                    <div className="bg-[#0e0e10] border border-zinc-800 rounded-2xl p-2">
+                        <DocumentationTabs resource={documentation!} />
                     </div>
                 )}
             </div>
+            )}
 
           </div>
 
