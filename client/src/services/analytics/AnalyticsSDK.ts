@@ -40,18 +40,14 @@ export class AnalyticsSDK {
    */
   private async init(): Promise<void> {
     if (this.isInitialized) {
-      // console.log('[Analytics] Already initialized, skipping');
       return;
     }
-    // console.log('[Analytics] Initializing SDK...', { apiUrl: this.config.apiUrl, debug: this.config.debug });
 
     try {
       await this.startSession();
-
       this.isInitialized = true;
-      // console.log('[Analytics] SDK initialized successfully', { sessionId: this.sessionManager.getSessionId(), deviceType: this.deviceInfo.deviceType, browser: this.deviceInfo.browser });
     } catch (error) {
-      // console.log('[Analytics] Failed to initialize:', error);
+      console.error('[Analytics] Failed to initialize:', error);
     }
   }
 
@@ -61,11 +57,11 @@ export class AnalyticsSDK {
   private async startSession(): Promise<void> {
     const baseUrl = this.config.apiUrl.replace(/\/$/, '');
     const url = `${baseUrl}/analytics/session/start`;
-    // console.log('[Analytics] Starting session...', { url });
 
     try {
       const response = await fetch(url, {
         method: 'POST',
+        credentials: 'include', // ✅ FIX: needed for CORS with backend that expects credentials
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: this.sessionManager.getSessionId(),
@@ -78,9 +74,8 @@ export class AnalyticsSDK {
         const errorText = await response.text();
         throw new Error(`Failed to start session: ${response.status} - ${errorText}`);
       }
-      // console.log('[Analytics] Session started successfully');
     } catch (error) {
-      // console.log('[Analytics] Failed to start session:', error);
+      console.error('[Analytics] Failed to start session:', error);
     }
   }
 
@@ -107,9 +102,7 @@ export class AnalyticsSDK {
       eventData: data?.eventData,
       timestamp: Date.now(),
     };
-    // console.log('[Analytics] 🎯 Event created:', JSON.stringify(event, null, 2));
     this.eventQueue.add(event);
-    // console.log('[Analytics] Event tracked:', { eventType, packageName: data?.packageName, queueSize: this.eventQueue.size() });
   }
 
   /**
@@ -119,7 +112,6 @@ export class AnalyticsSDK {
     const url = pageUrl || window.location.pathname;
 
     if (this.lastPageView === url) {
-      // console.log('[Analytics] Page view debounced:', url);
       return;
     }
 
@@ -144,14 +136,15 @@ export class AnalyticsSDK {
     const baseUrl = this.config.apiUrl.replace(/\/$/, '');
     fetch(`${baseUrl}/analytics/page-view`, {
       method: 'POST',
+      credentials: 'include', // ✅ FIX
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId: this.sessionManager.getSessionId(),
         pageUrl: url,
         timeOnPage: 0,
       }),
-    }).catch(() => {
-      // console.log('[Analytics] Failed to track page view');
+    }).catch((err) => {
+      console.error('[Analytics] Failed to track page view:', err);
     });
   }
 
@@ -190,6 +183,7 @@ export class AnalyticsSDK {
     const baseUrl = this.config.apiUrl.replace(/\/$/, '');
     fetch(`${baseUrl}/analytics/conversion`, {
       method: 'POST',
+      credentials: 'include', // ✅ FIX
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId: this.sessionManager.getSessionId(),
@@ -197,8 +191,8 @@ export class AnalyticsSDK {
         funnelStage,
         price,
       }),
-    }).catch(() => {
-      // console.log('[Analytics] Failed to track conversion');
+    }).catch((err) => {
+      console.error('[Analytics] Failed to track conversion:', err);
     });
   }
 
@@ -210,11 +204,12 @@ export class AnalyticsSDK {
       const baseUrl = this.config.apiUrl.replace(/\/$/, '');
       await fetch(`${baseUrl}/analytics/session/heartbeat`, {
         method: 'POST',
+        credentials: 'include', // ✅ FIX
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: this.sessionManager.getSessionId() }),
       });
     } catch {
-      // console.log('[Analytics] Failed to send heartbeat');
+      // best-effort
     }
   }
 
@@ -225,6 +220,7 @@ export class AnalyticsSDK {
     const baseUrl = this.config.apiUrl.replace(/\/$/, '');
     const response = await fetch(`${baseUrl}/analytics/events`, {
       method: 'POST',
+      credentials: 'include', // ✅ FIX
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ events }),
     });
@@ -240,7 +236,6 @@ export class AnalyticsSDK {
   setUser(userId?: number, discordId?: string): void {
     this.config.userId = userId;
     this.config.discordId = discordId;
-    // console.log('[Analytics] User updated:', { userId, discordId });
   }
 
   getSessionId(): string {

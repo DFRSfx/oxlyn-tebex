@@ -8,4 +8,3 @@ export const packages: Package[] = [
   // Packages are now loaded from Tebex API
   // See App.tsx and tebexService.fetchPackages()
 ];
-

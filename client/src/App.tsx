@@ -197,6 +197,11 @@ function MainApp({
     trackPageView(location.pathname);
   }, [location.pathname, trackPageView]);
 
+  // 🔥 SCROLL TO TOP ON ROUTE CHANGE
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [location.pathname]);
+
   // Helper to create URL-friendly slug from package name
   const createSlug = (name: string) => {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -206,14 +211,12 @@ function MainApp({
   const openPackageDetailsFromHome = (pkg: Package) => {
     const slug = createSlug(pkg.name);
     navigate(`/product/${slug}`, { state: { package: pkg, fromScripts: false } });
-    window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
   // Navigate to package details page from scripts
   const openPackageDetailsFromScripts = (pkg: Package) => {
     const slug = createSlug(pkg.name);
     navigate(`/product/${slug}`, { state: { package: pkg, fromScripts: true } });
-    window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
   // Determine background based on route

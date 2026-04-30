@@ -213,12 +213,12 @@ const CartPage: React.FC = () => {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-[#050505] text-white pt-32 pb-20 relative z-10 flex flex-col items-center justify-center">
-         <div className="p-8 bg-zinc-900 border border-zinc-800 rounded-2xl text-center max-w-md w-full">
-            <ShoppingCart className="w-16 h-16 text-zinc-600 mx-auto mb-6" />
-            <h2 className="text-2xl font-bold mb-2">Please Login</h2>
-            <p className="text-zinc-400 mb-6">You need to be logged in with FiveM to view your cart.</p>
-            <button className="w-full py-3 bg-white text-black font-bold rounded hover:bg-zinc-200 transition-colors">
+      <div className="min-h-screen bg-[#050505] text-white pt-20 sm:pt-32 pb-16 sm:pb-20 px-4 relative z-10 flex flex-col items-center justify-center">
+         <div className="p-6 sm:p-8 bg-zinc-900 border border-zinc-800 rounded-2xl text-center max-w-md w-full">
+            <ShoppingCart className="w-14 h-14 sm:w-16 sm:h-16 text-zinc-600 mx-auto mb-4 sm:mb-6" />
+            <h2 className="text-xl sm:text-2xl font-bold mb-2">Please Login</h2>
+            <p className="text-zinc-400 mb-5 sm:mb-6 text-sm sm:text-base">You need to be logged in with FiveM to view your cart.</p>
+            <button className="w-full py-3 bg-white text-black font-bold rounded hover:bg-zinc-200 transition-colors text-sm sm:text-base">
                 Login with FiveM
             </button>
          </div>
@@ -227,47 +227,47 @@ const CartPage: React.FC = () => {
   }
 
   return (
-    <section className="min-h-screen bg-[#050505] text-white pt-32 pb-20 relative z-10 font-sans selection:bg-orange-500/30">
-      <div className="max-w-[1400px] mx-auto px-6">
+    <section className="min-h-screen bg-[#050505] text-white pt-20 sm:pt-28 lg:pt-32 pb-16 sm:pb-20 relative z-10 font-sans selection:bg-orange-500/30">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
         
         {/* Header */}
-        <div className="mb-8 flex items-end justify-between">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
-                <h1 className="text-3xl font-bold text-white mb-1">Shopping Cart</h1>
-                <p className="text-zinc-500">{totalItems} {totalItems === 1 ? 'item' : 'items'} ready for checkout</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">Shopping Cart</h1>
+                <p className="text-zinc-500 text-sm sm:text-base">{totalItems} {totalItems === 1 ? 'item' : 'items'} ready for checkout</p>
             </div>
             {cartItems.length > 0 && (
-                <button onClick={() => navigate('/scripts')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-1">
-                    Continue Shopping <ArrowRight className="w-4 h-4" />
+                <button onClick={() => navigate('/scripts')} className="text-xs sm:text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-1 self-start sm:self-auto">
+                    Continue Shopping <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
             )}
         </div>
 
         {cartItems.length === 0 ? (
-           <div className="flex flex-col items-center justify-center py-24 bg-[#0a0a0a] border border-zinc-800 rounded-xl">
-             <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-6">
-                <ShoppingCart className="w-8 h-8 text-zinc-500" />
+           <div className="flex flex-col items-center justify-center py-16 sm:py-24 px-4 bg-[#0a0a0a] border border-zinc-800 rounded-xl">
+             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 sm:mb-6">
+                <ShoppingCart className="w-7 h-7 sm:w-8 sm:h-8 text-zinc-500" />
              </div>
-             <h2 className="text-2xl font-bold text-white mb-2">Your cart is empty</h2>
-             <p className="text-zinc-500 max-w-md text-center mb-8">
+             <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">Your cart is empty</h2>
+             <p className="text-zinc-500 max-w-md text-center mb-6 sm:mb-8 text-sm sm:text-base">
                Looks like you haven't added any scripts yet.
              </p>
              <button
                onClick={() => navigate('/scripts')}
-               className="px-8 py-3 bg-white text-black font-bold rounded hover:scale-105 transition-transform"
+               className="px-6 sm:px-8 py-2.5 sm:py-3 bg-white text-black font-bold rounded hover:scale-105 transition-transform text-sm sm:text-base"
              >
                Browse Scripts
              </button>
            </div>
         ) : (
-          <div className="grid lg:grid-cols-12 gap-8">
+          <div className="grid lg:grid-cols-12 gap-6 sm:gap-8">
             {/* Left Column - Cart Items */}
-            <div className="lg:col-span-8 space-y-6">
-               <div className="space-y-4">
+            <div className="lg:col-span-8 space-y-5 sm:space-y-6">
+               <div className="space-y-3 sm:space-y-4">
                {cartItems.map((item) => (
-                 <div key={item.id} className="bg-[#0a0a0a] border border-zinc-800 rounded-xl p-4 flex items-center gap-6 group hover:border-zinc-700 transition-colors relative overflow-hidden">
+                 <div key={item.id} className="bg-[#0a0a0a] border border-zinc-800 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 group hover:border-zinc-700 transition-colors relative overflow-hidden">
                     {/* Image */}
-                    <div className="w-32 aspect-video bg-zinc-900 rounded-lg overflow-hidden shrink-0 border border-zinc-800">
+                    <div className="w-full sm:w-32 aspect-video bg-zinc-900 rounded-lg overflow-hidden shrink-0 border border-zinc-800">
                         <img 
                             src={item.image} 
                             alt={item.name} 
@@ -277,13 +277,13 @@ const CartPage: React.FC = () => {
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                            <h3 className="text-lg font-bold text-white truncate">{item.name}</h3>
-                            <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] uppercase font-bold rounded border border-zinc-700">
+                        <div className="flex items-start sm:items-center gap-2 sm:gap-3 mb-1 flex-wrap">
+                            <h3 className="text-base sm:text-lg font-bold text-white break-words flex-1 min-w-0">{item.name}</h3>
+                            <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 text-[10px] uppercase font-bold rounded border border-zinc-700 shrink-0">
                                 {item.category ? formatCategoryName(item.category.name) : 'Script'}
                             </span>
                         </div>
-                        <p className="text-zinc-500 text-sm mb-2">Quantity: {item.qty}</p>
+                        <p className="text-zinc-500 text-xs sm:text-sm mb-2">Quantity: {item.qty}</p>
                         
                         {/* Discount Badge */}
                         <div className="flex gap-2">
@@ -293,20 +293,22 @@ const CartPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Price & Action */}
-                    <div className="text-right shrink-0">
-                        <div className="text-xs text-zinc-500 line-through mb-0.5">
-                            {currencySymbol}{((item.price * 2) * item.qty).toFixed(2)}
-                        </div>
-                        <div className="text-xl font-bold text-white mb-2">
-                            {currencySymbol}{(item.price * item.qty).toFixed(2)}
+                    {/* Price & Action — full row on mobile, side column on desktop */}
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between sm:text-right shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800">
+                        <div>
+                            <div className="text-xs text-zinc-500 line-through mb-0.5">
+                                {currencySymbol}{((item.price * 2) * item.qty).toFixed(2)}
+                            </div>
+                            <div className="text-lg sm:text-xl font-bold text-white">
+                                {currencySymbol}{(item.price * item.qty).toFixed(2)}
+                            </div>
                         </div>
                         <button
                             onClick={() => handleRemoveItem(item)}
-                            className="text-zinc-500 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-full"
+                            className="text-zinc-500 hover:text-red-500 transition-colors p-2 hover:bg-red-500/10 rounded-full sm:mt-2"
                             title="Remove item"
                         >
-                            <Trash2 className="w-5 h-5" />
+                            <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>
                     </div>
                  </div>
@@ -314,15 +316,15 @@ const CartPage: React.FC = () => {
                </div>
 
                {/* Subscription Promo Box */}
-               <div className="bg-gradient-to-r from-orange-900/20 via-orange-800/20 to-orange-900/20 border border-orange-500/20 rounded-xl p-6 relative overflow-hidden group">
+               <div className="bg-gradient-to-r from-orange-900/20 via-orange-800/20 to-orange-900/20 border border-orange-500/20 rounded-xl p-4 sm:p-6 relative overflow-hidden group">
                   <div className="relative z-10 flex items-start justify-between">
                      <div>
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <Crown className="w-5 h-5 text-orange-500" />
-                            <h3 className="font-bold text-white">Subscribe & Save</h3>
+                            <h3 className="font-bold text-white text-sm sm:text-base">Subscribe & Save</h3>
                             <span className="text-[10px] bg-orange-500 text-black font-bold px-2 py-0.5 rounded-full">SOON</span>
                         </div>
-                        <p className="text-sm text-zinc-400 max-w-lg">
+                        <p className="text-xs sm:text-sm text-zinc-400 max-w-lg">
                            Get access to all premium scripts for one monthly price. Save up to <span className="text-orange-400">85%</span> compared to individual purchases.
                         </p>
                      </div>
@@ -332,8 +334,8 @@ const CartPage: React.FC = () => {
 
             {/* Right Column - Summary & Coupons */}
             <div className="lg:col-span-4">
-                <div className="bg-[#0a0a0a] border border-zinc-800 rounded-xl p-6 sticky top-28">
-                    <h3 className="text-xl font-bold text-white mb-6">Order Summary</h3>
+                <div className="bg-[#0a0a0a] border border-zinc-800 rounded-xl p-4 sm:p-6 lg:sticky lg:top-28">
+                    <h3 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6">Order Summary</h3>
                     
                     {/* Coupon Input */}
                     <div className="mb-6">
@@ -466,11 +468,11 @@ const CartPage: React.FC = () => {
 
         {/* "You Might Also Like" Section - Real Scripts from API */}
         {featuredScripts.length > 0 && (
-          <div className="mt-24 text-center">
-              <h2 className="text-2xl font-bold text-white mb-2">You might also like</h2>
-              <p className="text-zinc-500 mb-8">Check out our featured scripts</p>
+          <div className="mt-16 sm:mt-24 text-center">
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">You might also like</h2>
+              <p className="text-zinc-500 mb-6 sm:mb-8 text-sm sm:text-base">Check out our featured scripts</p>
 
-              <div className="grid md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                    {featuredScripts.map((script) => (
                       <div key={script.id} className="bg-[#0a0a0a] border border-zinc-800 rounded-xl overflow-hidden group hover:border-zinc-600 transition-all">
                           <div className="aspect-video bg-zinc-900 relative">
@@ -480,9 +482,9 @@ const CartPage: React.FC = () => {
                                  className="w-full h-full object-cover"
                                />
                           </div>
-                          <div className="p-5 text-left">
-                              <h3 className="text-lg font-bold text-white mb-1 truncate">{script.name}</h3>
-                              <p className="text-sm text-zinc-500 mb-4">€{script.price.toFixed(2)}</p>
+                          <div className="p-4 sm:p-5 text-left">
+                              <h3 className="text-base sm:text-lg font-bold text-white mb-1 truncate">{script.name}</h3>
+                              <p className="text-xs sm:text-sm text-zinc-500 mb-3 sm:mb-4">€{script.price.toFixed(2)}</p>
                               <div className="flex items-center justify-between gap-2">
                                   <button
                                     onClick={() => {

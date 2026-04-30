@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Sparkles, Code2 } from 'lucide-react';
 
 interface FooterProps {
   scrollToSection?: (sectionId: string) => void;
@@ -8,7 +9,6 @@ interface FooterProps {
 const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
   const currentYear = new Date().getFullYear();
 
-  // Logo URLs
   const oxlynLogo = "https://i.imgur.com/ndYSTED.png";
   const vanguardLogo = "https://www.vanguard-labs.xyz/vanguard-icon.webp";
 
@@ -21,10 +21,16 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
 
   return (
     <footer className="border-t border-white/5 py-20 bg-[#050505] relative z-10 font-sans">
-      {/* Background ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
+      {/* Same background as homepage */}
+      <div className="absolute inset-0 grid-background opacity-20 pointer-events-none" />
+      <div className="absolute inset-0 hero-gradient-enhanced pointer-events-none" />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="geometric-shape geometric-shape-1" />
+        <div className="geometric-shape geometric-shape-2" />
+        <div className="geometric-shape geometric-shape-3" />
+      </div>
 
-      <div className="max-w-7xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-6 relative z-10">
         <div className="grid lg:grid-cols-4 gap-12 mb-20">
           {/* Brand Section */}
           <div className="lg:col-span-2 space-y-6">
@@ -108,22 +114,27 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
           </div>
         </div>
 
-        {/* "We also founded..." Cards Section - UPDATED */}
+        {/* "We also founded..." Cards Section */}
         <div className="mb-20">
-          <h4 className="text-white font-bold text-2xl mb-10 text-center">
-            We also founded and <span className="text-orange-500">developed</span>
-          </h4>
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/15 to-red-500/15 border border-orange-500/30 mb-4 backdrop-blur-sm">
+              <Sparkles className="w-5 h-5 text-orange-400" />
+              <span className="text-sm font-bold text-orange-400 uppercase tracking-widest">Our Projects</span>
+            </div>
+            <h4 className="text-white font-bold text-2xl">
+              We also founded and <span className="text-orange-500">developed</span>
+            </h4>
+          </div>
           
           <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
             
-            {/* Vanguard Labs Card - Improved & Logo Added */}
+            {/* Vanguard Labs Card */}
             <a
               href="https://vanguard-labs.xyz"
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative bg-[#0a0a0a] rounded-xl p-6 border border-white/5 hover:border-[#00e5cc]/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
+              className="group relative bg-zinc-900/30 rounded-xl p-6 border border-zinc-800 hover:border-[#00e5cc]/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
             >
-              {/* Subtle Cyan gradient background hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-[#00e5cc]/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl" />
               
               <div className="relative z-10 flex flex-col h-full">
@@ -149,14 +160,13 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
               </div>
             </a>
 
-            {/* OXLYN Software Card - Improved & Logo Added */}
+            {/* OXLYN Software Card */}
             <a
               href="https://oxlynsoftware.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative bg-[#0a0a0a] rounded-xl p-6 border border-white/5 hover:border-orange-500/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
+              className="group relative bg-zinc-900/30 rounded-xl p-6 border border-zinc-800 hover:border-orange-500/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
             >
-              {/* Subtle Orange gradient background hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl" />
               
               <div className="relative z-10 flex flex-col h-full">
@@ -166,7 +176,7 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
                     alt="Oxlyn Software Logo" 
                     className="w-12 h-12 drop-shadow-[0_0_12px_rgba(249,115,22,0.4)] transition-transform group-hover:scale-105" 
                   />
-                   <div>
+                  <div>
                     <h4 className="font-bold text-xl text-white group-hover:text-orange-500 transition-colors">⌞OXLYN⌝ Software®</h4>
                     <p className="text-orange-500 text-xs font-bold tracking-wider uppercase">Premium Development</p>
                   </div>
@@ -174,7 +184,7 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
                 <p className="text-neutral-400 text-sm leading-relaxed mb-6 flex-grow">
                   Specialized in enterprise-grade applications, custom solutions, and professional software development.
                 </p>
-                 <div className="flex">
+                <div className="flex">
                   <span className="inline-block bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full text-xs font-bold border border-orange-500/20 group-hover:bg-orange-500/20 transition-colors">
                     Professional Solutions
                   </span>
@@ -187,27 +197,24 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
         {/* Footer Bottom */}
         <div className="border-t border-white/5 pt-12 flex flex-col items-center">
           
-          {/* Made With */}
           <div className="text-center mb-8 space-y-4">
-            <p className="text-white text-lg font-medium flex items-center justify-center gap-2">
-              Made with 
-              <svg fill="currentColor" viewBox="0 0 512 512" className="text-red-600 w-5 h-5 animate-pulse">
-                <path d="M462.3 62.6C407.5 15.9 326 24.3 275.7 76.2L256 96.5l-19.7-20.3C186.1 24.3 104.5 15.9 49.7 62.6c-62.8 53.6-66.1 149.8-9.9 207.9l193.5 199.8c12.5 12.9 32.8 12.9 45.3 0l193.5-199.8c56.3-58.1 53-154.3-9.8-207.9z" />
-              </svg>
-              by <a href="https://github.com/DFRSfx/" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-400 font-bold transition-colors">SoaresDev</a>
-            </p>
-            
             <div className="text-neutral-500 text-sm space-y-1">
-               <p>© {currentYear} <span className="text-orange-500 font-bold">⌞OXLYN⌝ Software®</span>. All rights reserved.</p>
-               <p>Premium FiveM Scripts • Developed with excellence for the community</p>
+              <p>© {currentYear} <span className="text-orange-500 font-bold">⌞OXLYN⌝ Software®</span>. All rights reserved.</p>
+              <p>Premium FiveM Scripts • Developed with excellence for the community</p>
+            </div>
+
+            {/* Developer Credit Note */}
+            <div className="flex items-center justify-center gap-2 text-xs text-neutral-600 mt-4">
+              <Code2 className="w-3.5 h-3.5 text-orange-500/60" />
+              <span>This website was made with the help of <span className="text-neutral-400 font-medium">Soares</span> <span className="text-orange-500/80">(Oxlyn CO-Founder)</span></span>
             </div>
 
             {/* DMCA Badge */}
             <div className="pt-2">
-               <a href="//www.dmca.com/Protection/Status.aspx" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/10 hover:bg-white/10 transition-colors cursor-pointer">
-                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                  <span className="text-xs text-neutral-300 font-medium">Protected by DMCA.com</span>
-               </a>
+              <a href="//www.dmca.com/Protection/Status.aspx" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/10 hover:bg-white/10 transition-colors cursor-pointer">
+                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                <span className="text-xs text-neutral-300 font-medium">Protected by DMCA.com</span>
+              </a>
             </div>
           </div>
 
@@ -222,21 +229,21 @@ const Footer: React.FC<FooterProps> = ({ scrollToSection }) => {
 
           {/* Tebex Box */}
           <div className="w-full max-w-2xl">
-            <div className="bg-[#111] rounded-lg p-5 border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="bg-zinc-900/30 rounded-lg p-5 border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-6">
               <div className="flex items-center gap-4">
                 <button
-                      onClick={() => window.location.href = 'https://tebex.io'}
-                      className="transition-all duration-300 hover:scale-110 hover:brightness-125 bg-white/10 p-3 rounded-lg"
-                    >
-                      <img
-                        src="https://i.imgur.com/lSi89zm.png"
-                        alt="Tebex"
-                        className="h-8 w-auto filter brightness-100 hover:brightness-110 transition-all duration-300"
-                      />
-                    </button>
+                  onClick={() => window.location.href = 'https://tebex.io'}
+                  className="transition-all duration-300 hover:scale-110 hover:brightness-125 bg-white/10 p-3 rounded-lg"
+                >
+                  <img
+                    src="https://i.imgur.com/lSi89zm.png"
+                    alt="Tebex"
+                    className="h-8 w-auto filter brightness-100 hover:brightness-110 transition-all duration-300"
+                  />
+                </button>
                 <div className="flex flex-col">
-                   <span className="text-white text-sm font-bold leading-tight">Powered by Tebex</span>
-                   <span className="text-neutral-500 text-xs">Secure checkout partner</span>
+                  <span className="text-white text-sm font-bold leading-tight">Powered by Tebex</span>
+                  <span className="text-neutral-500 text-xs">Secure checkout partner</span>
                 </div>
               </div>
               <p className="text-neutral-500 text-xs text-center sm:text-right max-w-xs leading-relaxed">

@@ -1,7 +1,8 @@
 import React from 'react';
-import { X, Trash2, ShoppingCart, ExternalLink } from 'lucide-react';
+import { X, ShoppingCart, ExternalLink } from 'lucide-react';
 import { useTebex } from '../context/TebexContext';
 import { formatCategoryName } from '../utils/helpers';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 interface CartProps {
   isOpen: boolean;
@@ -10,12 +11,36 @@ interface CartProps {
 
 const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
   const { cartItems, removeFromCart, proceedToCheckout, isLoggedIn } = useTebex();
+  const { trackEvent } = useAnalytics();
 
   const totalItems = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const totalPrice = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const currency = cartItems[0]?.currency || 'EUR';
 
   const state = isOpen ? 'open' : 'closed';
+
+  /**
+   * Wraps the context's proceedToCheckout so we can fire a checkout_initiated
+   * event with the cart snapshot *before* the redirect to Tebex.
+   *
+   * The actual `purchase` funnel event fires from the Tebex `payment:complete`
+   * listener inside tebexCheckout.ts — this one tracks intent, not success.
+   */
+  const handleCheckout = () => {
+    trackEvent('checkout_initiated', {
+      eventData: {
+        itemCount: totalItems,
+        totalValue: totalPrice,
+        currency,
+        items: cartItems.map((i) => ({
+          name: i.name,
+          price: i.price,
+          qty: i.qty,
+        })),
+      },
+    });
+    proceedToCheckout();
+  };
 
   return (
     <>
@@ -125,7 +150,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
                 Continue Shopping
               </button>
               <button
-                onClick={proceedToCheckout}
+                onClick={handleCheckout}
                 className="w-full button-primary py-3 rounded-xl text-white font-bold text-base flex items-center justify-center gap-2 hover:scale-105 transition-transform"
               >
                 Pay with Tebex

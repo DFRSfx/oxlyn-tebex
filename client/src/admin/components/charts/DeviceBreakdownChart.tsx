@@ -1,6 +1,6 @@
 import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { Monitor, Smartphone, Tablet } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { Monitor, Smartphone, Tablet, Layers } from 'lucide-react';
 
 interface DeviceData {
   device_type: string;
@@ -13,36 +13,65 @@ interface DeviceBreakdownChartProps {
   loading?: boolean;
 }
 
-const DEVICE_COLORS: Record<string, string> = {
-  desktop: '#3b82f6',
-  mobile: '#10b981',
-  tablet: '#f59e0b',
-};
-
-const DEVICE_ICONS: Record<string, React.ReactNode> = {
-  desktop: <Monitor className="w-4 h-4" />,
-  mobile: <Smartphone className="w-4 h-4" />,
-  tablet: <Tablet className="w-4 h-4" />,
+const DEVICE_CONFIG: Record<
+  string,
+  { color: string; icon: React.ReactNode; bgClass: string; textClass: string }
+> = {
+  desktop: {
+    color: '#3b82f6',
+    icon: <Monitor className="w-4 h-4" />,
+    bgClass: 'bg-blue-500/10',
+    textClass: 'text-blue-400',
+  },
+  mobile: {
+    color: '#10b981',
+    icon: <Smartphone className="w-4 h-4" />,
+    bgClass: 'bg-emerald-500/10',
+    textClass: 'text-emerald-400',
+  },
+  tablet: {
+    color: '#facc15',
+    icon: <Tablet className="w-4 h-4" />,
+    bgClass: 'bg-amber-500/10',
+    textClass: 'text-amber-400',
+  },
 };
 
 export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
   data,
   loading = false,
 }) => {
-  // Transform data for chart
-  const chartData = data.map((item) => ({
-    name: item.device_type.charAt(0).toUpperCase() + item.device_type.slice(1),
-    value: item.count,
-    percentage: item.percentage,
-    color: DEVICE_COLORS[item.device_type] || '#666',
-  }));
+  // Transform data
+  const chartData = data.map((item) => {
+    const config = DEVICE_CONFIG[item.device_type] || {
+      color: '#666',
+      icon: <Layers className="w-4 h-4" />,
+      bgClass: 'bg-white/5',
+      textClass: 'text-gray-400',
+    };
+    return {
+      name: item.device_type.charAt(0).toUpperCase() + item.device_type.slice(1),
+      value: item.count,
+      percentage: item.percentage,
+      color: config.color,
+      device_type: item.device_type,
+    };
+  });
+
+  const totalSessions = data.reduce((sum, d) => sum + d.count, 0);
+  const topDevice = data.length > 0 ? [...data].sort((a, b) => b.percentage - a.percentage)[0] : null;
 
   if (loading) {
     return (
-      <div className="bg-[#0f0f0f] border border-white/5 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Device Breakdown</h3>
-        <div className="h-[350px] flex items-center justify-center">
-          <div className="animate-pulse text-gray-500">Loading chart...</div>
+      <div className="bg-[#0f0f0f] border border-white/5 rounded-xl p-5 sm:p-6">
+        <div className="h-5 bg-white/5 rounded w-1/3 mb-6 animate-pulse" />
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <div className="w-40 h-40 rounded-full border-[20px] border-white/5 animate-pulse" />
+          <div className="flex-1 w-full space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-12 bg-white/[0.02] border border-white/5 rounded-lg animate-pulse" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -50,76 +79,159 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-[#0f0f0f] border border-white/5 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Device Breakdown</h3>
-        <div className="h-[350px] flex items-center justify-center">
-          <p className="text-gray-500">No device data available</p>
+      <div className="bg-[#0f0f0f] border border-white/5 rounded-xl p-5 sm:p-6">
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <h3 className="text-sm sm:text-base font-semibold text-white">Device Breakdown</h3>
+        </div>
+        <div className="h-[280px] flex flex-col items-center justify-center gap-2">
+          <div className="w-12 h-12 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-center">
+            <Layers className="w-5 h-5 text-gray-600" />
+          </div>
+          <p className="text-sm text-gray-500">No device data available</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#0f0f0f] border border-white/5 rounded-lg p-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Device Breakdown</h3>
+    <div className="bg-[#0f0f0f] border border-white/5 rounded-xl p-5 sm:p-6 hover:border-white/10 transition-colors">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 mb-5 sm:mb-6">
+        <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <Layers className="w-3.5 h-3.5 text-amber-400" />
+        </div>
+        <h3 className="text-sm sm:text-base font-semibold text-white">Device Breakdown</h3>
+      </div>
 
-      <ResponsiveContainer width="100%" height={250}>
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ percentage }) => `${percentage.toFixed(1)}%`}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-          >
-            {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#1a1a1a',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '8px',
-              color: '#fff',
-            }}
-            formatter={(value: number, name: string, props: any) => [
-              `${value.toLocaleString()} (${props.payload.percentage.toFixed(1)}%)`,
-              name,
-            ]}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-
-      {/* Device Stats List */}
-      <div className="mt-6 space-y-3">
-        {data.map((device) => (
-          <div
-            key={device.device_type}
-            className="flex items-center justify-between p-3 bg-white/5 rounded-lg"
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="p-2 rounded-lg"
-                style={{ backgroundColor: `${DEVICE_COLORS[device.device_type]}20` }}
+      {/* Donut + summary side-by-side on desktop, stacked on mobile */}
+      <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-6 mb-5">
+        {/* Donut chart with center label */}
+        <div className="relative flex-shrink-0">
+          <ResponsiveContainer width={180} height={180}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                cx="50%"
+                cy="50%"
+                innerRadius={55}
+                outerRadius={80}
+                paddingAngle={2}
+                dataKey="value"
+                strokeWidth={0}
               >
-                <div style={{ color: DEVICE_COLORS[device.device_type] }}>
-                  {DEVICE_ICONS[device.device_type]}
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#18181b',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  padding: '8px 12px',
+                  boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)',
+                }}
+                formatter={(value: number, _name: string, props: any) => [
+                  `${value.toLocaleString()} (${props.payload.percentage.toFixed(1)}%)`,
+                  props.payload.name,
+                ]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+
+          {/* Center label */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <p className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold">Total</p>
+            <p className="text-2xl font-bold text-white tracking-tight">
+              {totalSessions.toLocaleString()}
+            </p>
+            <p className="text-[10px] text-gray-500">sessions</p>
+          </div>
+        </div>
+
+        {/* Top device callout */}
+        {topDevice && (
+          <div className="flex-1 w-full">
+            <div className="bg-gradient-to-br from-white/[0.03] to-transparent border border-white/5 rounded-xl p-4">
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold mb-1.5">
+                Top Device
+              </p>
+              <div className="flex items-center gap-2.5 mb-2">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${DEVICE_CONFIG[topDevice.device_type]?.bgClass} ${DEVICE_CONFIG[topDevice.device_type]?.textClass}`}
+                >
+                  {DEVICE_CONFIG[topDevice.device_type]?.icon || <Layers className="w-4 h-4" />}
                 </div>
+                <p className="text-base font-bold text-white capitalize">{topDevice.device_type}</p>
               </div>
-              <div>
-                <p className="text-sm font-medium text-white capitalize">{device.device_type}</p>
-                <p className="text-xs text-gray-400">{device.count.toLocaleString()} sessions</p>
+              <div className="flex items-baseline gap-2">
+                <span className={`text-2xl font-bold ${DEVICE_CONFIG[topDevice.device_type]?.textClass || 'text-white'}`}>
+                  {topDevice.percentage.toFixed(1)}%
+                </span>
+                <span className="text-xs text-gray-500">of total traffic</span>
               </div>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-white">{device.percentage.toFixed(1)}%</p>
             </div>
           </div>
-        ))}
+        )}
+      </div>
+
+      {/* Device list with progress bars */}
+      <div className="space-y-2">
+        {data
+          .slice()
+          .sort((a, b) => b.percentage - a.percentage)
+          .map((device) => {
+            const config = DEVICE_CONFIG[device.device_type] || {
+              color: '#666',
+              icon: <Layers className="w-4 h-4" />,
+              bgClass: 'bg-white/5',
+              textClass: 'text-gray-400',
+            };
+            return (
+              <div
+                key={device.device_type}
+                className="group p-3 bg-white/[0.02] border border-white/5 rounded-lg hover:border-white/10 transition-all"
+              >
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${config.bgClass} ${config.textClass} flex-shrink-0`}
+                    >
+                      {config.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold text-white capitalize">
+                        {device.device_type}
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-gray-500">
+                        {device.count.toLocaleString()} sessions
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-base sm:text-lg font-bold ${config.textClass}`}>
+                      {device.percentage.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-1000 ease-out"
+                    style={{
+                      width: `${device.percentage}%`,
+                      background: `linear-gradient(90deg, ${config.color}aa, ${config.color})`,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
       </div>
     </div>
   );

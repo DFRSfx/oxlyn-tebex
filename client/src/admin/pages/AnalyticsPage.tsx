@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, Eye, ShoppingCart, TrendingUp, Clock } from 'lucide-react';
+import { BarChart3, Users, Eye, ShoppingCart, TrendingUp, Clock, Activity, RefreshCw } from 'lucide-react';
 import { MetricsCard } from '../components/charts/MetricsCard';
 import { TimeSeriesChart } from '../components/charts/TimeSeriesChart';
 import { ConversionFunnelChart } from '../components/charts/ConversionFunnelChart';
@@ -22,6 +22,7 @@ interface DashboardStats {
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>('7d');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Dashboard stats
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
@@ -34,8 +35,12 @@ export default function AnalyticsPage() {
   const [geographicData, setGeographicData] = useState<any[]>([]);
 
   // Fetch all analytics data
-  const fetchAnalyticsData = async () => {
-    setLoading(true);
+  const fetchAnalyticsData = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const headers = {
         'Content-Type': 'application/json',
@@ -106,6 +111,7 @@ export default function AnalyticsPage() {
       console.error('Failed to fetch analytics data:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -124,43 +130,73 @@ export default function AnalyticsPage() {
   }, [period]);
 
   const periodLabels: Record<Period, string> = {
-    '7d': 'Last 7 days',
-    '30d': 'Last 30 days',
-    '90d': 'Last 90 days',
+    '7d': '7 dias',
+    '30d': '30 dias',
+    '90d': '90 dias',
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <BarChart3 className="w-8 h-8 text-amber-500" />
-              Analytics Dashboard
-            </h1>
-            <p className="text-gray-400 mt-1">Advanced analytics and insights</p>
-          </div>
+        {/* Premium Header */}
+        <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#0f0f0f] via-[#0f0f0f] to-[#1a1410]">
+          <div className="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
 
-          {/* Period Selector */}
-          <div className="flex items-center gap-2 bg-[#0f0f0f] border border-white/5 rounded-lg p-1">
-            {(['7d', '30d', '90d'] as Period[]).map((p) => (
+          <div className="relative p-6 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-amber-500/30 blur-xl rounded-2xl" />
+                <div className="relative w-14 h-14 bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/20 rounded-2xl flex items-center justify-center">
+                  <BarChart3 className="text-amber-400" size={26} />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-block w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-lg shadow-emerald-400/50" />
+                  <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-widest">Live Data</span>
+                </div>
+                <h1 className="text-2xl font-bold text-white tracking-tight">
+                  Analytics Dashboard
+                </h1>
+                <p className="text-sm text-gray-400 mt-0.5">Análises avançadas e insights em tempo real</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Refresh button */}
               <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  period === p
-                    ? 'bg-amber-500 text-black'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
+                onClick={() => fetchAnalyticsData(true)}
+                disabled={refreshing}
+                className="group p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl transition-all disabled:opacity-50"
+                title="Atualizar dados"
               >
-                {periodLabels[p]}
+                <RefreshCw size={16} className={`text-gray-400 group-hover:text-white ${refreshing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
               </button>
-            ))}
+
+              {/* Period Selector — pill style */}
+              <div className="flex items-center bg-[#0a0a0a] border border-white/10 rounded-xl p-1 relative">
+                {(['7d', '30d', '90d'] as Period[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className={`relative px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+                      period === p
+                        ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {periodLabels[p]}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Metrics Cards */}
+        {/* Section: Visitor Metrics */}
+        <SectionLabel icon={<Users size={14} />} text="Métricas de Visitantes" />
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricsCard
             title="Total Sessions"
@@ -189,7 +225,9 @@ export default function AnalyticsPage() {
           />
         </div>
 
-        {/* Key Metrics Row */}
+        {/* Section: Performance Metrics */}
+        <SectionLabel icon={<Activity size={14} />} text="Métricas de Performance" />
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <MetricsCard
             title="Bounce Rate"
@@ -213,7 +251,9 @@ export default function AnalyticsPage() {
           />
         </div>
 
-        {/* Time Series Charts */}
+        {/* Section: Time Series */}
+        <SectionLabel icon={<TrendingUp size={14} />} text="Tendências ao Longo do Tempo" />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <TimeSeriesChart
             data={sessionsTimeSeries}
@@ -229,15 +269,32 @@ export default function AnalyticsPage() {
           />
         </div>
 
-        {/* Conversion Funnel */}
+        {/* Section: Conversion */}
+        <SectionLabel icon={<ShoppingCart size={14} />} text="Funil de Conversão" />
+
         <ConversionFunnelChart data={conversionFunnel} loading={loading} />
 
-        {/* Device & Geographic */}
+        {/* Section: Audience */}
+        <SectionLabel icon={<Eye size={14} />} text="Análise de Audiência" />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <DeviceBreakdownChart data={deviceData} loading={loading} />
           <GeographicChart data={geographicData} loading={loading} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// Section divider with icon
+function SectionLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <div className="w-7 h-7 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-gray-400">
+        {icon}
+      </div>
+      <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest">{text}</span>
+      <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
     </div>
   );
 }
