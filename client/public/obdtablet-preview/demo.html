@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OXLYN OBD Tablet II — Live Preview</title>
+    <!--
+      Standalone, in-browser demo of the oxlyn-obdtablet NUI ("OBD-OS").
+      The real resource is driven by the FiveM game client (SendNUIMessage
+      {action:'open', ...}) and the Lua client/server, which answers NUI
+      callbacks via fetch('https://oxlyn-obdtablet/<name>'). Neither exists in
+      a browser. js/demo-bridge.js (loaded LAST) plays BOTH roles: it posts the
+      boot 'open' message with a mock locale/config/reprograms payload and
+      intercepts every NUI fetch with in-memory mock data ported from
+      client/nui.lua. Nothing about the original NUI code is modified.
+      Reset on reload.
+    -->
+
+    <!-- Fonts: Manrope (UI), JetBrains Mono (data/code) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome Pro v7.2.0 (carrego apenas o essencial para performance) -->
+    <link rel="stylesheet" href="/fontawesome/css/fontawesome.css">
+    <link rel="stylesheet" href="/fontawesome/css/sharp-solid.css">
+    <link rel="stylesheet" href="/fontawesome/css/solid.css">
+    <link rel="stylesheet" href="/fontawesome/css/duotone.css">
+
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        /* The NUI normally floats over the transparent game world. In the
+           website iframe we give it a soft dark backdrop so the tablet reads
+           as a product shot rather than sitting on raw black. (No backdrop-
+           filter — CEF renders the game behind it black; harmless here, but we
+           keep the markup identical to the resource.) */
+        html, body {
+            margin: 0;
+            height: 100%;
+            background:
+                radial-gradient(120% 120% at 50% 0%, #14161c 0%, #0a0b0f 55%, #050507 100%);
+            overflow: hidden;
+        }
+
+        /* ===================================================================
+           LIVE-PREVIEW SCALE-TO-FIT. Presentation only — no boot, data, or
+           bridge logic is touched (same pattern as the MDT preview).
+           -------------------------------------------------------------------
+           The OBD tablet is a FIXED-SIZE canvas: `.tablet-frame` is exactly
+           1200x780px and every view/modal/overlay lives inside it (absolute,
+           inset:0). #root is already a full-viewport flex-centered container
+           with the dark gradient backdrop. Inside the small sales iframe the
+           1200x780 frame is bigger than the viewport, so its edges get clipped
+           ("half cut off"). We scale the whole frame down with transform:scale()
+           to "contain" it on BOTH axes, centred, letting the gradient show in
+           the leftover space. The scale is driven by the iframe's OWN
+           innerWidth/innerHeight, so the same logic fits it when embedded
+           (small) and in fullscreen (large), and never upscales past 1:1.
+           =================================================================== */
+        :root { --obd-scale: 1; }
+
+        .tablet-frame {
+            transform: scale(var(--obd-scale));
+            transform-origin: center center;
+            /* The frame uses `margin:auto`-style flex centering already; keep
+               its in-flow size and only visually scale it. flex-shrink:0 stops
+               the flex parent from squashing it before the transform applies. */
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="root" class="hidden">
+
+    <div id="notify-stack"></div>
+
+    <div class="tablet-frame">
+
+        <div class="side-buttons-left">
+            <span class="sb vol-up"></span>
+            <span class="sb vol-down"></span>
+        </div>
+        <div class="side-buttons-right">
+            <span class="sb power"></span>
+        </div>
+
+        <div class="tablet-bezel-top">
+            <span class="mic-hole"></span>
+            <span class="proximity"></span>
+            <span class="camera"><i></i></span>
+            <span class="ambient"></span>
+            <span class="led" id="status-led"></span>
+        </div>
+
+        <div class="screen" id="screen">
+
+            <!-- BOOT -->
+            <section class="view boot" id="view-boot">
+                <div class="boot-content">
+                    <div class="logo">
+                        <div class="logo-bars"><span></span><span></span><span></span></div>
+                        <div class="logo-text" id="boot-logo-text">OBD<span>-OS</span></div>
+                    </div>
+                    <div class="boot-lines">
+                        <div class="boot-line" id="boot-l1"></div>
+                        <div class="boot-line" id="boot-l2"></div>
+                        <div class="boot-line" id="boot-l3"></div>
+                        <div class="boot-line" id="boot-l4"></div>
+                    </div>
+                    <div class="boot-progress"><div id="boot-bar"></div></div>
+                    <div class="boot-meta">
+                        <span id="boot-brand">OXLYN Diagnostics</span><span>kernel 3.4.1</span><span>UDS 14229</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HOME (redesign limpo) -->
+            <section class="view" id="view-home">
+
+                <header class="topbar">
+                    <div class="topbar-left">
+                        <span class="time" id="clock">--:--</span>
+                        <span class="tb-chip">
+                            <i class="fa-sharp fa-solid fa-wifi"></i>
+                            <span>OBD-II</span>
+                        </span>
+                    </div>
+                    <div class="topbar-center">
+                        <span class="brand-mark">
+                            <i class="fa-duotone fa-solid fa-hexagon-vertical-nft"></i>
+                        </span>
+                        <div class="brand-text">
+                            <strong id="brand-name">OXLYN</strong>
+                            <small id="brand-sub">DIAGNOSTICS</small>
+                        </div>
+                    </div>
+                    <div class="topbar-right">
+                        <span class="conn-indicator" id="conn-indicator-home">
+                            <i class="dot"></i><span id="conn-text-home" data-i18n="conn_off">OFF</span>
+                        </span>
+                        <span class="batt-pill"><i></i><span id="batt-pct">78%</span></span>
+                        <button class="tb-close" id="btn-close-top" data-i18n-title="btn_close" title="Close">
+                            <i class="fa-sharp fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="home-title-row">
+                    <div class="hero">
+                        <h1 id="hero-title" data-i18n="hero_title">OBD Tablet II</h1>
+                        <p class="hero-sub" id="hero-sub" data-i18n="hero_subtitle">OXLYN DIAGNOSTICS · ISO 15765-4 CAN</p>
+                    </div>
+                    <div class="hero-actions">
+                        <div class="search-box">
+                            <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                            <input id="home-search" data-i18n-placeholder="home_search" placeholder="Search functions, modules...">
+                        </div>
+                        <button class="icon-btn" data-i18n-title="home_filters" title="Filters">
+                            <i class="fa-sharp fa-solid fa-sliders"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="home-section-label" data-i18n="home_section_main">Main functions</div>
+
+                <div class="home-main-grid">
+
+                    <div class="vehicle-card" id="vehicle-card">
+                        <div class="vc-header">
+                            <span class="vc-dot" id="vc-dot"></span>
+                            <span class="vc-status" id="vc-status" data-i18n="vc_status_offline">OBD-II OFFLINE</span>
+                        </div>
+                        <div class="vc-plate" id="vc-plate">------ - ----</div>
+                        <div class="vc-car">
+                            <img src="assets/car3d.png" alt="vehicle" id="vc-car-img" onerror="this.style.opacity='0'">
+                        </div>
+                        <button class="vc-btn" data-view="scanner">
+                            <span id="vc-btn-text" data-i18n="conn_action">Start Connection</span>
+                            <i class="fa-sharp fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="apps-grid-v2">
+
+                        <button class="app-card scanner" data-view="scanner">
+                            <div class="ac-icon"><i class="fa-sharp fa-solid fa-magnifying-glass-plus"></i></div>
+                            <h3 data-i18n="app_scanner">Scanner</h3>
+                            <p data-i18n="app_scanner_desc">Read fault codes across all modules.</p>
+                            <span class="ac-arrow"><i class="fa-sharp fa-solid fa-arrow-right"></i></span>
+                        </button>
+
+                        <button class="app-card repro" data-view="reprograms" data-needs-conn>
+                            <div class="ac-icon"><i class="fa-sharp fa-solid fa-microchip"></i></div>
+                            <h3 data-i18n="app_reprograms">Reprogram</h3>
+                            <p data-i18n="app_reprograms_desc">ECU and module reprogramming.</p>
+                            <span class="ac-arrow"><i class="fa-sharp fa-solid fa-arrow-right"></i></span>
+                        </button>
+
+                        <button class="app-card dyno" data-view="dyno" data-needs-conn>
+                            <div class="ac-icon"><i class="fa-sharp fa-solid fa-gauge-high"></i></div>
+                            <h3 data-i18n="app_dyno">Dyno</h3>
+                            <p data-i18n="app_dyno_desc">Vehicle performance testing.</p>
+                            <span class="ac-arrow"><i class="fa-sharp fa-solid fa-arrow-right"></i></span>
+                        </button>
+
+                        <button class="app-card hist" data-view="history">
+                            <div class="ac-icon"><i class="fa-sharp fa-solid fa-clock-rotate-left"></i></div>
+                            <h3 data-i18n="app_history">History</h3>
+                            <p data-i18n="app_history_desc">View past records.</p>
+                            <span class="ac-arrow"><i class="fa-sharp fa-solid fa-arrow-right"></i></span>
+                        </button>
+
+                        <button class="app-card about" data-view="about">
+                            <div class="ac-icon"><i class="fa-sharp fa-solid fa-circle-info"></i></div>
+                            <h3 data-i18n="app_about">About</h3>
+                            <p data-i18n="app_about_desc">System information and support.</p>
+                            <span class="ac-arrow"><i class="fa-sharp fa-solid fa-arrow-right"></i></span>
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <div class="sys-panel">
+                    <div class="sys-title" data-i18n="sys_panel_title">Vehicle system</div>
+                    <div class="sys-stats">
+                        <div class="sys-stat">
+                            <div class="ss-icon ic-green"><i class="fa-sharp fa-solid fa-car-battery"></i></div>
+                            <div class="ss-info">
+                                <div class="ss-label" data-i18n="sys_voltage">Battery voltage</div>
+                                <div class="ss-value" id="ss-voltage">-- V</div>
+                            </div>
+                        </div>
+                        <div class="sys-stat">
+                            <div class="ss-icon ic-orange"><i class="fa-sharp fa-solid fa-temperature-half"></i></div>
+                            <div class="ss-info">
+                                <div class="ss-label" data-i18n="sys_temperature">Engine temperature</div>
+                                <div class="ss-value" id="ss-temp">-- °C</div>
+                            </div>
+                        </div>
+                        <div class="sys-stat">
+                            <div class="ss-icon ic-purple"><i class="fa-sharp fa-solid fa-engine"></i></div>
+                            <div class="ss-info">
+                                <div class="ss-label" data-i18n="sys_rpm">Engine RPM</div>
+                                <div class="ss-value" id="ss-rpm">-- RPM</div>
+                            </div>
+                        </div>
+                        <div class="sys-stat">
+                            <div class="ss-icon ic-blue"><i class="fa-sharp fa-solid fa-gauge"></i></div>
+                            <div class="ss-info">
+                                <div class="ss-label" data-i18n="sys_speed">Speed</div>
+                                <div class="ss-value" id="ss-speed">-- km/h</div>
+                            </div>
+                        </div>
+                        <div class="sys-stat">
+                            <div class="ss-icon ic-orange"><i class="fa-sharp fa-solid fa-gas-pump"></i></div>
+                            <div class="ss-info">
+                                <div class="ss-label" data-i18n="sys_fuel">Fuel</div>
+                                <div class="ss-value" id="ss-fuel">-- %</div>
+                            </div>
+                        </div>
+                        <div class="sys-stat">
+                            <div class="ss-icon ic-green" id="ss-state-icon"><i class="fa-sharp fa-solid fa-circle-check"></i></div>
+                            <div class="ss-info">
+                                <div class="ss-label" data-i18n="sys_state">Status</div>
+                                <div class="ss-value" id="ss-state">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <nav class="dock-v2">
+                    <button class="dock-v2-btn active" data-view="home">
+                        <i class="fa-sharp fa-solid fa-house"></i>
+                        <span data-i18n="dock_home">Home</span>
+                    </button>
+                    <button class="dock-v2-btn" data-view="scanner">
+                        <i class="fa-sharp fa-solid fa-magnifying-glass-plus"></i>
+                        <span data-i18n="dock_scanner">Scanner</span>
+                    </button>
+                    <button class="dock-v2-btn" data-view="reprograms" data-needs-conn>
+                        <i class="fa-sharp fa-solid fa-microchip"></i>
+                        <span data-i18n="dock_reprograms">Reprogram</span>
+                    </button>
+                    <button class="dock-v2-btn" data-view="dyno" data-needs-conn>
+                        <i class="fa-sharp fa-solid fa-gauge-high"></i>
+                        <span data-i18n="dock_dyno">Dyno</span>
+                    </button>
+                    <button class="dock-v2-btn" data-view="history">
+                        <i class="fa-sharp fa-solid fa-clock-rotate-left"></i>
+                        <span data-i18n="dock_history">History</span>
+                    </button>
+                    <button class="dock-v2-btn" data-view="settings">
+                        <i class="fa-sharp fa-solid fa-gear"></i>
+                        <span data-i18n="dock_settings">Settings</span>
+                    </button>
+                </nav>
+
+            </section>
+
+            <!-- SCANNER (cable minigame) -->
+            <section class="view" id="view-scanner">
+                <header class="page-header">
+                    <button class="back" data-view="home"><i class="fa-sharp fa-solid fa-arrow-left"></i></button>
+                    <h2 data-i18n="conn_title">OBD-II Connection</h2>
+                    <span class="hdr-meta" id="scanner-status">--</span>
+                </header>
+
+                <div class="conn-screen" id="conn-screen-disconnected">
+                    <div class="plug-stage" id="plug-stage">
+                        <div class="workshop-bg" aria-hidden="true">
+                            <div class="ws-light"></div>
+                            <div class="ws-grid"></div>
+                            <div class="ws-panel-bracket"></div>
+                            <div class="ws-screws">
+                                <span></span><span></span><span></span><span></span>
+                            </div>
+                            <div class="ws-stencil" data-i18n="ws_stencil">DASH HARNESS · J1962</div>
+                        </div>
+
+                        <div class="obd-port" id="obd-port">
+                            <div class="obd-port-frame">
+                                <div class="obd-port-receptacle">
+                                    <div class="obd-port-pins">
+                                        <span></span><span></span><span></span><span></span>
+                                        <span></span><span></span><span></span><span></span>
+                                    </div>
+                                    <div class="obd-port-pins bottom">
+                                        <span></span><span></span><span></span><span></span>
+                                        <span></span><span></span><span></span><span></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <span class="port-label">OBD-II · SAE J1962</span>
+                            <span class="port-arrow"><i class="fa-sharp fa-solid fa-caret-left"></i></span>
+                            <div class="port-glow"></div>
+                        </div>
+
+                        <svg class="cable-svg" id="cable-svg" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="cableGrad" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stop-color="#1a1d22"/>
+                                    <stop offset="50%" stop-color="#3a3d44"/>
+                                    <stop offset="100%" stop-color="#1a1d22"/>
+                                </linearGradient>
+                            </defs>
+                            <path id="cable-path-shadow" d="" stroke="rgba(0,0,0,.45)" stroke-width="11" fill="none" stroke-linecap="round" transform="translate(0,3)" />
+                            <path id="cable-path"        d="" stroke="url(#cableGrad)" stroke-width="9" fill="none" stroke-linecap="round" />
+                            <path id="cable-path-core"   d="" stroke="#0a0c10" stroke-width="4" fill="none" stroke-linecap="round" />
+                        </svg>
+
+                        <div class="plug" id="plug">
+                            <div class="plug-grip">
+                                <div class="plug-led"></div>
+                                <span class="plug-brand">OBD-II</span>
+                                <span class="plug-model">J1962-PRO</span>
+                            </div>
+                            <div class="plug-strain"></div>
+                            <div class="plug-collar"></div>
+                            <div class="plug-shroud">
+                                <div class="plug-pins-row top">
+                                    <span></span><span></span><span></span><span></span>
+                                    <span></span><span></span><span></span><span></span>
+                                </div>
+                                <div class="plug-pins-row bottom">
+                                    <span></span><span></span><span></span><span></span>
+                                    <span></span><span></span><span></span><span></span>
+                                </div>
+                            </div>
+                            <div class="plug-tip"></div>
+                            <div class="plug-grab-hint" data-i18n="cable_pick_up">Grab the connector</div>
+                        </div>
+
+                        <div class="lock-flash" id="lock-flash"></div>
+
+                        <div class="cable-hud">
+                            <div class="hud-row hud-pins">
+                                <div class="hud-label" data-i18n="cable_pins_label">PINS · SAE J1962</div>
+                                <div class="pin-indicator-strip" id="pin-indicator-strip"></div>
+                                <div class="hud-mini" id="hud-pin-count">0/16</div>
+                            </div>
+                            <div class="hud-row hud-align">
+                                <div class="hud-label" id="ai-label" data-i18n="cable_pick_up">Grab the connector</div>
+                                <div class="ai-bar" id="align-indicator">
+                                    <i id="ai-bar-fill"></i>
+                                </div>
+                            </div>
+                            <div class="hud-row hud-lock" id="lock-bar">
+                                <div class="hud-label" data-i18n="cable_hold_lock">Hold to lock...</div>
+                                <div class="ai-bar lockbar"><i id="lock-bar-fill"></i></div>
+                            </div>
+                        </div>
+
+                        <div class="cable-hint-banner" data-i18n="cable_hint_banner">Grab the OBD-II connector and drag it to the port under the steering wheel.</div>
+                    </div>
+
+                    <div class="plug-actions">
+                        <button class="action-btn ghost" id="cable-close-btn">
+                            <i class="fa-sharp fa-solid fa-power-off"></i>
+                            <span data-i18n="btn_close_tablet">Close Tablet</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="conn-screen" id="conn-screen-connecting" style="display:none;">
+                    <div class="conn-spinner-wrap">
+                        <div class="conn-spinner"></div>
+                        <div class="conn-spinner-inner"></div>
+                    </div>
+                    <h3 data-i18n="conn_connecting">Connecting to ECU...</h3>
+                    <div class="conn-steps" id="conn-steps"></div>
+                </div>
+
+                <div class="conn-screen connected" id="conn-screen-connected" style="display:none;">
+
+                    <!-- Vehicle header bar -->
+                    <div class="sp-vehicle">
+                        <div class="sp-vehicle-left">
+                            <div class="plate-tag" id="conn-plate">------</div>
+                            <div class="sp-vehicle-info">
+                                <strong id="conn-model">--</strong>
+                                <span id="conn-class">--</span>
+                            </div>
+                        </div>
+                        <div class="sp-vehicle-right">
+                            <div class="sp-info-pill">
+                                <span data-i18n="conn_label_vin">VIN</span>
+                                <code id="conn-vin">-</code>
+                            </div>
+                            <div class="sp-info-pill">
+                                <span data-i18n="conn_label_fw">ECU FW</span>
+                                <code id="conn-fw">-</code>
+                            </div>
+                            <div class="sp-info-pill primary">
+                                <span data-i18n="conn_label_map">MAP</span>
+                                <strong id="conn-map">OEM</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3-panel main grid: Modules | Live Data | DTCs -->
+                    <div class="sp-main">
+
+                        <!-- Modules panel -->
+                        <div class="sp-panel sp-modules-panel">
+                            <div class="sp-panel-head">
+                                <div class="sp-panel-title">
+                                    <i class="fa-sharp fa-solid fa-microchip"></i>
+                                    <span data-i18n="sp_modules_title">OBD-II Modules</span>
+                                </div>
+                                <button class="sp-scan-btn" id="btn-full-scan">
+                                    <i class="fa-sharp fa-solid fa-radar"></i>
+                                    <span data-i18n="sp_full_scan_btn">Full Diagnostic</span>
+                                </button>
+                            </div>
+                            <div class="sp-scan-progress">
+                                <div class="sp-scan-progress-fill" id="scan-progress-fill"></div>
+                                <div class="sp-scan-progress-label" id="scan-progress-label" data-i18n="sp_scan_idle">Awaiting diagnostic</div>
+                            </div>
+                            <div class="sp-modules-list" id="modules-list"></div>
+                        </div>
+
+                        <!-- Live Data panel -->
+                        <div class="sp-panel sp-live-panel">
+                            <div class="sp-panel-head">
+                                <div class="sp-panel-title">
+                                    <i class="fa-sharp fa-solid fa-wave-square"></i>
+                                    <span data-i18n="sp_live_title">Live Sensors</span>
+                                </div>
+                                <div class="sp-live-dot"></div>
+                            </div>
+                            <div class="sp-live-grid">
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-purple"><i class="fa-sharp fa-solid fa-engine"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_rpm">RPM</span>
+                                        <strong id="ld-rpm">--</strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-blue"><i class="fa-sharp fa-solid fa-gauge"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_speed">Speed</span>
+                                        <strong id="ld-speed">-- <small>km/h</small></strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-orange"><i class="fa-sharp fa-solid fa-temperature-half"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_coolant">Coolant</span>
+                                        <strong id="ld-coolant">-- <small>°C</small></strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-green"><i class="fa-sharp fa-solid fa-car-battery"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_battery">Battery</span>
+                                        <strong id="ld-battery">-- <small>V</small></strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-orange"><i class="fa-sharp fa-solid fa-gas-pump"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_fuel">Fuel</span>
+                                        <strong id="ld-fuel">-- <small>%</small></strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-blue"><i class="fa-sharp fa-solid fa-wind"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_maf">MAF</span>
+                                        <strong id="ld-maf">-- <small>g/s</small></strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-purple"><i class="fa-sharp fa-solid fa-bolt"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_throttle">Throttle</span>
+                                        <strong id="ld-throttle">-- <small>%</small></strong>
+                                    </div>
+                                </div>
+                                <div class="ld-stat">
+                                    <div class="ld-icon ic-green"><i class="fa-sharp fa-solid fa-heart-pulse"></i></div>
+                                    <div class="ld-info">
+                                        <span data-i18n="ld_engine_health">Engine Health</span>
+                                        <strong id="ld-engine">-- <small>%</small></strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- DTCs panel -->
+                        <div class="sp-panel sp-dtcs-panel">
+                            <div class="sp-panel-head">
+                                <div class="sp-panel-title">
+                                    <i class="fa-sharp fa-solid fa-triangle-exclamation"></i>
+                                    <span data-i18n="sp_dtc_title">DTC Codes</span>
+                                </div>
+                                <div class="sp-dtc-count" id="dtc-count">0</div>
+                            </div>
+                            <div class="sp-dtcs-list" id="dtcs-list">
+                                <div class="dtc-empty">
+                                    <i class="fa-sharp fa-solid fa-circle-check"></i>
+                                    <span data-i18n="sp_dtc_empty">No active codes</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Bottom actions -->
+                    <div class="conn-actions">
+                        <button class="action-btn primary" data-view="reprograms">
+                            <i class="fa-sharp fa-solid fa-microchip"></i>
+                            <span data-i18n="sp_btn_reprogram">Reprogram ECU</span>
+                        </button>
+                        <button class="action-btn ghost" data-view="dyno">
+                            <i class="fa-sharp fa-solid fa-gauge-high"></i>
+                            <span data-i18n="sp_btn_dyno">Open Dyno</span>
+                        </button>
+                        <button class="action-btn danger" id="btn-disconnect">
+                            <i class="fa-sharp fa-solid fa-plug-circle-xmark"></i>
+                            <span data-i18n="conn_disconnect">End Session</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- REPROGRAMS -->
+            <section class="view" id="view-reprograms">
+                <header class="page-header">
+                    <button class="back" data-view="home"><i class="fa-sharp fa-solid fa-arrow-left"></i></button>
+                    <h2 data-i18n="repro_title">ECU Reprograms</h2>
+                    <span class="hdr-meta" id="current-repro-label"></span>
+                </header>
+
+                <div class="needs-conn-placeholder" id="repro-needs-conn">
+                    <div class="warn-icon"><i class="fa-sharp fa-solid fa-triangle-exclamation"></i></div>
+                    <p data-i18n="repro_needs_conn">Connect the tablet to an ECU first.</p>
+                    <button class="action-btn primary" data-view="scanner" data-i18n="conn_action">Start Connection</button>
+                </div>
+
+                <div class="repro-grid" id="repro-grid" style="display:none;"></div>
+
+                <div class="modal" id="repro-modal">
+                    <div class="modal-card lg">
+                        <div class="cm-head">
+                            <div class="cm-head-icon" id="modal-icon">
+                                <i class="fa-sharp fa-solid fa-microchip"></i>
+                            </div>
+                            <div>
+                                <h3 id="modal-title" data-i18n="modal_title_repro">Confirm Flash</h3>
+                                <p class="cm-sub" id="modal-desc"></p>
+                            </div>
+                        </div>
+
+                        <div class="cm-effects" id="modal-effects"></div>
+
+                        <div class="cm-meta-grid">
+                            <div class="meta-item">
+                                <div class="meta-icon"><i class="fa-sharp fa-solid fa-clock"></i></div>
+                                <div class="meta-text">
+                                    <span class="ml" data-i18n="modal_duration">Duration</span>
+                                    <strong id="modal-time">~12s</strong>
+                                </div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-icon"><i class="fa-sharp fa-solid fa-shield-halved"></i></div>
+                                <div class="meta-text">
+                                    <span class="ml" data-i18n="modal_warranty">Warranty</span>
+                                    <strong id="modal-warranty">Voided</strong>
+                                </div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-icon"><i class="fa-sharp fa-solid fa-gas-pump"></i></div>
+                                <div class="meta-text">
+                                    <span class="ml" data-i18n="modal_fuel">Fuel</span>
+                                    <strong id="modal-fuel">95 RON</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cm-warning">
+                            <i class="fa-sharp fa-solid fa-triangle-exclamation"></i>
+                            <span data-i18n="modal_warning_msg">Flashing alters the vehicle handling/power. Engine off is recommended.</span>
+                        </div>
+
+                        <div class="cm-footer">
+                            <div class="cm-cost"><span data-i18n="modal_cost_total">Total cost</span>: <strong id="modal-cost">-</strong></div>
+                            <div class="modal-actions">
+                                <button class="action-btn ghost" id="modal-cancel" data-i18n="btn_cancel">Cancel</button>
+                                <button class="action-btn primary" id="modal-confirm">
+                                    <i class="fa-sharp fa-solid fa-bolt"></i>
+                                    <span data-i18n="btn_confirm_flash">Confirm Flash</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CUSTOM TUNER CONFIG MODAL (sliders para HP, top speed, etc) -->
+                <div class="modal" id="custom-modal">
+                    <div class="modal-card lg">
+                        <div class="cm-head">
+                            <div class="cm-head-icon"><i class="fa-sharp fa-solid fa-sliders"></i></div>
+                            <div>
+                                <h3 data-i18n="custom_title">Custom Tuner</h3>
+                                <p class="cm-sub" data-i18n="custom_subtitle">Adjust your custom map parameters</p>
+                            </div>
+                        </div>
+                        <div class="custom-sliders">
+                            <div class="cfg-row">
+                                <div class="cfg-label"><i class="fa-sharp fa-solid fa-bolt" style="color:#ff6240"></i><span data-i18n="custom_label_hp">Power (HP)</span></div>
+                                <div class="cfg-value" id="cfg-hp-val">+50%</div>
+                                <input type="range" id="cfg-hp" min="50" max="250" value="150" class="cfg-slider">
+                            </div>
+                            <div class="cfg-row">
+                                <div class="cfg-label"><i class="fa-sharp fa-solid fa-gauge-high" style="color:#fbbf24"></i><span data-i18n="custom_label_topspeed">Top Speed</span></div>
+                                <div class="cfg-value" id="cfg-topspeed-val">+50%</div>
+                                <input type="range" id="cfg-topspeed" min="60" max="220" value="150" class="cfg-slider">
+                            </div>
+                            <div class="cfg-row">
+                                <div class="cfg-label"><i class="fa-sharp fa-solid fa-rocket" style="color:#38bdf8"></i><span data-i18n="custom_label_accel">Acceleration</span></div>
+                                <div class="cfg-value" id="cfg-accel-val">+40%</div>
+                                <input type="range" id="cfg-accel" min="60" max="200" value="140" class="cfg-slider">
+                            </div>
+                            <div class="cfg-row">
+                                <div class="cfg-label"><i class="fa-sharp fa-solid fa-circle-stop" style="color:#a78bfa"></i><span data-i18n="custom_label_brakes">Braking</span></div>
+                                <div class="cfg-value" id="cfg-brakes-val">+30%</div>
+                                <input type="range" id="cfg-brakes" min="60" max="200" value="130" class="cfg-slider">
+                            </div>
+                            <div class="cfg-row">
+                                <div class="cfg-label"><i class="fa-sharp fa-solid fa-road" style="color:#4ade80"></i><span data-i18n="custom_label_grip">Grip</span></div>
+                                <div class="cfg-value" id="cfg-grip-val">+20%</div>
+                                <input type="range" id="cfg-grip" min="60" max="160" value="120" class="cfg-slider">
+                            </div>
+                            <div class="cfg-row">
+                                <div class="cfg-label"><i class="fa-sharp fa-solid fa-compress-arrows-alt" style="color:#f472b6"></i><span data-i18n="custom_label_susp">Suspension</span></div>
+                                <div class="cfg-value" id="cfg-susp-val">+10%</div>
+                                <input type="range" id="cfg-susp" min="70" max="150" value="110" class="cfg-slider">
+                            </div>
+                        </div>
+                        <div class="cm-footer">
+                            <div class="cm-cost"><span data-i18n="custom_cost">Cost:</span> <strong>$5,000</strong></div>
+                            <div class="modal-actions">
+                                <button class="action-btn ghost" id="custom-reset" data-i18n="custom_reset">Reset</button>
+                                <button class="action-btn ghost" id="custom-cancel" data-i18n="btn_cancel">Cancel</button>
+                                <button class="action-btn primary" id="custom-apply" data-i18n="custom_apply">Save Map</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flash-overlay" id="flash-overlay">
+                    <div class="flash-window">
+                        <div class="flash-head">
+                            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+                            <div class="flash-title" id="flash-title">root@obd-flasher:~# uds_program --device=/dev/can0 --ecu=ECM</div>
+                            <div class="flash-time" id="flash-time">00:00.000</div>
+                        </div>
+                        <div class="flash-console" id="flash-console"></div>
+                        <div class="flash-bar"><div id="flash-bar-fill"></div></div>
+                        <div class="flash-status" id="flash-status">[ idle ]</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DYNO -->
+            <section class="view" id="view-dyno">
+                <header class="page-header">
+                    <button class="back" data-view="home"><i class="fa-sharp fa-solid fa-arrow-left"></i></button>
+                    <h2 data-i18n="dyno_title">Dynamometer Bench</h2>
+                    <span class="hdr-meta" id="dyno-status" data-i18n="dyno_idle">Standby</span>
+                </header>
+
+                <div class="needs-conn-placeholder" id="dyno-needs-conn">
+                    <div class="warn-icon"><i class="fa-sharp fa-solid fa-triangle-exclamation"></i></div>
+                    <p data-i18n="dyno_needs_conn">Connect the tablet to an ECU first.</p>
+                    <button class="action-btn primary" data-view="scanner" data-i18n="conn_action">Start Connection</button>
+                </div>
+
+                <div class="dyno-wrap" id="dyno-wrap" style="display:none;">
+
+                    <div class="dyno-header">
+                        <div class="dh-left">
+                            <div class="plate-tag" id="dyno-h-plate">------</div>
+                            <div class="dh-meta">
+                                <div class="dh-model" id="dyno-h-model">-</div>
+                                <div class="dh-class" id="dyno-h-class">-</div>
+                            </div>
+                        </div>
+                        <div class="dh-right">
+                            <div class="dh-map-label" data-i18n="dyno_map">Current map</div>
+                            <div class="dh-map" id="dyno-h-map">OEM</div>
+                        </div>
+                    </div>
+
+                    <div class="dyno-main">
+
+                        <div class="dyno-gauge-card">
+                            <div class="dgc-title">
+                                <span data-i18n="dyno_current_hp">Current</span>
+                                <i class="dgc-dot"></i>
+                            </div>
+
+                            <div class="dyno-gauge-box">
+                                <svg viewBox="0 0 200 130" preserveAspectRatio="xMidYMid meet" class="gauge-svg">
+                                    <path d="M 20 110 A 80 80 0 0 1 180 110"
+                                          fill="none" stroke="#14171c" stroke-width="14" stroke-linecap="round"/>
+                                    <path id="gauge-arc"
+                                          d="M 20 110 A 80 80 0 0 1 180 110"
+                                          fill="none" stroke="url(#gradHp)" stroke-width="14" stroke-linecap="round"
+                                          stroke-dasharray="252" stroke-dashoffset="252"/>
+                                    <g class="gauge-ticks" id="gauge-ticks"></g>
+                                    <circle id="gauge-marker" cx="20" cy="110" r="6"
+                                            fill="#fff" stroke="#ff6240" stroke-width="2.5"/>
+                                    <defs>
+                                        <linearGradient id="gradHp" x1="0" y1="0" x2="1" y2="0">
+                                            <stop offset="0%"  stop-color="#4ade80"/>
+                                            <stop offset="50%" stop-color="#fbbf24"/>
+                                            <stop offset="100%" stop-color="#ff6240"/>
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                                <div class="gauge-center">
+                                    <div class="gauge-hp" id="gauge-hp">0</div>
+                                    <div class="gauge-hp-label" id="gauge-hp-unit" data-i18n="dyno_hp">hp</div>
+                                </div>
+                            </div>
+
+                            <div class="rpm-strip">
+                                <div class="rpm-strip-label">
+                                    <span>RPM</span>
+                                    <span id="rpm-live">0</span>
+                                </div>
+                                <div class="rpm-bar"><div id="rpm-bar-fill"></div></div>
+                                <div class="rpm-strip-axis">
+                                    <span>1k</span><span>3k</span><span>5k</span><span>7k</span>
+                                </div>
+                            </div>
+
+                            <button class="action-btn primary big" id="btn-dyno-run" data-i18n="dyno_run">Start Pull</button>
+                        </div>
+
+                        <div class="dyno-curve-card">
+                            <div class="dcc-title">
+                                <span data-i18n="dyno_power_band">Power band</span>
+                                <div class="dcc-legend">
+                                    <span><i class="lg-curr"></i>HP</span>
+                                    <span><i class="lg-tq"></i>Nm</span>
+                                    <span><i class="lg-stock"></i>OEM</span>
+                                </div>
+                            </div>
+                            <div class="dyno-curve" id="dyno-curve">
+                                <!-- Y axis labels -->
+                                <div class="curve-y-axis">
+                                    <span>700</span>
+                                    <span>500</span>
+                                    <span>300</span>
+                                    <span>100</span>
+                                </div>
+
+                                <div class="dyno-chart-wrap">
+                                    <svg viewBox="0 0 380 150" preserveAspectRatio="none" id="curve-svg">
+                                        <defs>
+                                            <linearGradient id="curveGrad" x1="0" x2="0" y1="0" y2="1">
+                                                <stop offset="0%"   stop-color="#ff6240" stop-opacity="0.45"/>
+                                                <stop offset="100%" stop-color="#ff6240" stop-opacity="0"/>
+                                            </linearGradient>
+                                            <linearGradient id="curveTqGrad" x1="0" x2="0" y1="0" y2="1">
+                                                <stop offset="0%"   stop-color="#38bdf8" stop-opacity="0.15"/>
+                                                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+                                            </linearGradient>
+                                            <clipPath id="curveClip">
+                                                <rect x="0" y="0" width="380" height="150"/>
+                                            </clipPath>
+                                        </defs>
+                                        <g clip-path="url(#curveClip)">
+                                            <g class="grid">
+                                                <line x1="0"   y1="38"  x2="380" y2="38"/>
+                                                <line x1="0"   y1="75"  x2="380" y2="75"/>
+                                                <line x1="0"   y1="112" x2="380" y2="112"/>
+                                                <line x1="63"  y1="0"   x2="63"  y2="150"/>
+                                                <line x1="127" y1="0"   x2="127" y2="150"/>
+                                                <line x1="190" y1="0"   x2="190" y2="150"/>
+                                                <line x1="253" y1="0"   x2="253" y2="150"/>
+                                                <line x1="317" y1="0"   x2="317" y2="150"/>
+                                            </g>
+                                            <path id="curve-stock"        d="" fill="none" stroke="#9aa3ad" stroke-width="1.4" stroke-dasharray="4,3" opacity=".7"/>
+                                            <path id="curve-torque-fill"  d="" fill="url(#curveTqGrad)"/>
+                                            <path id="curve-torque"       d="" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                                            <path id="curve-current-fill" d="" fill="url(#curveGrad)"/>
+                                            <path id="curve-current"      d="" fill="none" stroke="#ff6240" stroke-width="2.6"/>
+                                            <!-- crosshair (vertical line on hover) -->
+                                            <line id="chart-crosshair" x1="0" y1="0" x2="0" y2="150"
+                                                  stroke="rgba(56,189,248,.45)" stroke-width="1"
+                                                  stroke-dasharray="3,3" style="display:none" />
+                                            <!-- hover markers -->
+                                            <circle id="chart-marker-hp" cx="0" cy="0" r="4.5"
+                                                    fill="#ff6240" stroke="#fff" stroke-width="1.5"
+                                                    style="display:none" />
+                                            <circle id="chart-marker-tq" cx="0" cy="0" r="4"
+                                                    fill="#38bdf8" stroke="#fff" stroke-width="1.5"
+                                                    style="display:none" />
+                                            <!-- drawing head (follows leading edge during live pull) -->
+                                            <circle id="chart-draw-head" cx="0" cy="0" r="4.5"
+                                                    fill="#ff6240" stroke="#fff" stroke-width="2"
+                                                    style="display:none" />
+                                            <circle id="chart-draw-head-tq" cx="0" cy="0" r="3.5"
+                                                    fill="#38bdf8" stroke="#fff" stroke-width="1.5"
+                                                    style="display:none" />
+                                        </g>
+                                    </svg>
+                                    <!-- Peak label (canto superior direito - sem dot fixo no meio) -->
+                                    <div class="chart-peak-label" id="chart-peak-label" style="display:none">
+                                        <i class="fa-sharp fa-solid fa-bolt"></i>
+                                        <span><span data-i18n="dyno_peak_label">Peak</span> <strong id="cpl-hp">--</strong> <small data-i18n="dyno_hp">hp</small> @ <strong id="cpl-rpm">--</strong></span>
+                                    </div>
+                                    <!-- HTML tooltip -->
+                                    <div class="chart-tooltip" id="chart-tooltip">
+                                        <div class="tt-rpm" id="tt-rpm">--RPM</div>
+                                        <div class="tt-row"><i class="tt-dot hp"></i><span>HP</span><strong id="tt-hp">--</strong><small data-i18n="dyno_hp">hp</small></div>
+                                        <div class="tt-row"><i class="tt-dot tq"></i><span>Nm</span><strong id="tt-tq">--</strong><small>Nm</small></div>
+                                    </div>
+                                    <div class="curve-axis">
+                                        <span>1k</span><span>2k</span><span>3k</span><span>4k</span><span>5k</span><span>6k</span><span>7k</span>
+                                    </div>
+                                </div>
+                                <div class="dyno-empty-hint" id="dyno-empty-hint" data-i18n="dyno_no_data">No data. Start a pull to measure.</div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="dyno-stats-grid">
+                        <div class="dyno-stat">
+                            <div class="ds-label" data-i18n="dyno_stock_hp">OEM</div>
+                            <div class="ds-value" id="d-stock-hp">0 <small data-i18n="dyno_hp">hp</small></div>
+                        </div>
+                        <div class="dyno-stat current">
+                            <div class="ds-label" data-i18n="dyno_current_hp">Current</div>
+                            <div class="ds-value" id="d-curr-hp">0 <small data-i18n="dyno_hp">hp</small></div>
+                        </div>
+                        <div class="dyno-stat gain">
+                            <div class="ds-label" data-i18n="dyno_gain">Gain</div>
+                            <div class="ds-value" id="d-gain-hp">+0 <small data-i18n="dyno_hp">hp</small></div>
+                        </div>
+                        <div class="dyno-stat">
+                            <div class="ds-label" data-i18n="dyno_torque">Torque</div>
+                            <div class="ds-value" id="d-torque">0 <small>Nm</small></div>
+                        </div>
+                        <div class="dyno-stat">
+                            <div class="ds-label" data-i18n="dyno_peak_rpm">Peak RPM</div>
+                            <div class="ds-value" id="d-peak-rpm">6500</div>
+                        </div>
+                        <div class="dyno-stat">
+                            <div class="ds-label" data-i18n="history_what">Map</div>
+                            <div class="ds-value small" id="d-map">OEM</div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- HISTORY -->
+            <section class="view" id="view-history">
+                <header class="page-header">
+                    <button class="back" data-view="home"><i class="fa-sharp fa-solid fa-arrow-left"></i></button>
+                    <h2 data-i18n="app_history">History</h2>
+                    <div class="hdr-tabs">
+                        <button class="tab active" data-tab="this" data-i18n="history_tab_this">This vehicle</button>
+                        <button class="tab" data-tab="all" data-i18n="history_tab_all">All</button>
+                    </div>
+                </header>
+                <div class="history-wrap">
+                    <table class="hist-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="history_when">Date/Time</th>
+                                <th data-i18n="history_plate">Plate</th>
+                                <th data-i18n="history_action">Operation</th>
+                                <th data-i18n="history_what">Map</th>
+                                <th data-i18n="history_who">Technician</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hist-body">
+                            <tr><td colspan="5" class="empty" data-i18n="history_empty">No records.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ABOUT -->
+            <section class="view" id="view-about">
+                <header class="page-header">
+                    <button class="back" data-view="home"><i class="fa-sharp fa-solid fa-arrow-left"></i></button>
+                    <h2 id="about-title">OBD-OS</h2>
+                </header>
+                <div class="about-wrap">
+                    <div class="about-logo" id="about-logo">OBD<span>-OS</span></div>
+                    <div class="about-list">
+                        <div><strong data-i18n="about_version">Version</strong><span>1.6.0 (kernel 3.4.1)</span></div>
+                        <div><strong data-i18n="about_protocol">Protocol</strong><span>ISO 15765-4 / UDS 14229</span></div>
+                        <div><strong data-i18n="about_cable">Cable</strong><span>USB-C / OBD-II SAE J1962</span></div>
+                        <div><strong data-i18n="about_developer">Manufacturer</strong><span id="about-developer">OXLYN Diagnostics</span></div>
+                        <div><strong data-i18n="about_license">License</strong><span id="about-license">Proprietary © OXLYN</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SETTINGS (info only - idioma vem da config) -->
+            <section class="view" id="view-settings">
+                <header class="page-header">
+                    <button class="back" data-view="home"><i class="fa-sharp fa-solid fa-arrow-left"></i></button>
+                    <h2 data-i18n="settings_title">Settings</h2>
+                </header>
+                <div class="settings-wrap">
+                    <div class="settings-card">
+                        <div class="sc-title">
+                            <i class="fa-sharp fa-solid fa-tablet-screen-button"></i>
+                            <span data-i18n="settings_system">System</span>
+                        </div>
+                        <div class="sc-info-row"><span data-i18n="settings_version">Version</span><strong>1.7.0</strong></div>
+                        <div class="sc-info-row"><span data-i18n="settings_protocol">Protocol</span><strong>ISO 15765-4 / UDS 14229</strong></div>
+                        <div class="sc-info-row"><span data-i18n="settings_cable">Cable</span><strong>USB-C / SAE J1962</strong></div>
+                        <div class="sc-info-row"><span data-i18n="settings_kernel">Kernel</span><strong>OBD-OS 3.4.1</strong></div>
+                        <div class="sc-info-row"><span data-i18n="settings_manufacturer">Manufacturer</span><strong id="settings-developer">OXLYN Diagnostics</strong></div>
+                    </div>
+                    <div class="settings-card">
+                        <div class="sc-title">
+                            <i class="fa-sharp fa-solid fa-circle-info"></i>
+                            <span data-i18n="settings_config">Configuration</span>
+                        </div>
+                        <div class="sc-note">
+                            <i class="fa-sharp fa-solid fa-gear"></i>
+                            <span id="settings-config-note" data-i18n-html="settings_config_note">All settings (language, costs, job restrictions, custom reprograms) are managed in <code>config.lua</code>. Ask your administrator to change them.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <div class="tablet-bezel-bottom">
+            <span class="tb-brand" id="tb-brand">OXLYN</span>
+            <button class="home-physical" id="phys-home" title="Home"><div class="hp-inner"></div></button>
+            <span class="usb-port"></span>
+        </div>
+    </div>
+</div>
+
+<!-- LIVE-PREVIEW SCALE-TO-FIT scaler. Sizing only — does not touch boot/data/
+     bridge logic. Mirrors the proven MDT preview scaler: it sets --obd-scale on
+     :root = min(innerW/BASE_W, innerH/BASE_H), clamped to <=1 so the fixed
+     1200x780 .tablet-frame only ever shrinks to fit (never upscales / blurs),
+     stays centred on the gradient, and recomputes on resize + fullscreen. The
+     frame exists in the DOM from the start (even while #root is .hidden), so the
+     scale is correct regardless of WHEN the demo boots; we also re-apply on a
+     few timers + on the boot 'open' message to cover the reveal. -->
+<script id="obd-preview-scaler">
+  (function () {
+    'use strict';
+    var BASE_W = 1200, BASE_H = 780;
+    // Small gutter so the frame's wide outer drop-shadow isn't clipped at the
+    // very edge of a tight viewport — keeps the WHOLE tablet visibly framed.
+    var GUTTER = 0.97;
+    function fit() {
+      var scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H) * GUTTER;
+      // Never upscale past 1:1 (keeps text/UI crisp); only shrink to contain.
+      if (scale > 1) scale = 1;
+      document.documentElement.style.setProperty('--obd-scale', String(scale));
+    }
+    fit();
+    window.addEventListener('resize', fit, { passive: true });
+    window.addEventListener('orientationchange', fit, { passive: true });
+    document.addEventListener('fullscreenchange', fit);
+    document.addEventListener('webkitfullscreenchange', fit);
+    document.addEventListener('DOMContentLoaded', fit);
+    window.addEventListener('load', fit);
+    // The demo boots on a parent 'start' message (or ~8s fallback); re-fit when
+    // #root is revealed so the scale is right at first paint of the UI.
+    window.addEventListener('message', function () { fit(); });
+    [200, 600, 1200, 2500, 8200].forEach(function (t) { setTimeout(fit, t); });
+  })();
+</script>
+
+<script src="script.js"></script>
+<!-- Website demo bridge: boots the tablet + stubs every NUI fetch with mock
+     data. Must load LAST so script.js has already registered its message
+     listener and defined postNUI/fetch usage. -->
+<script src="js/demo-bridge.js"></script>
+</body>
+</html>

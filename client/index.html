@@ -1,63 +1,293 @@
 <!doctype html>
-<html lang="pt">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="https://i.imgur.com/ndYSTED.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>⌞OXLYN⌝ Software® - Premium FiveM Scripts</title>
-    <meta name="description" content="Scripts premium para FiveM da OXLYN Software®. Qualidade profissional, performance otimizada e suporte completo." />
-    <meta name="keywords" content="FiveM, OXLYN, scripts, premium, servidor, GTA V, roleplay, portugal, profissional" />
-    <meta property="og:title" content="⌞OXLYN⌝ Software® - Premium FiveM Scripts" />
-    <meta property="og:description" content="Scripts premium para FiveM. Qualidade profissional e performance otimizada garantida." />
-    <meta property="og:image" content="https://i.imgur.com/8SOx7vB.png" />
-    <meta property="og:url" content="https://oxlyn.software" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#06060a" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- Primary -->
+    <title>Premium FiveM Scripts for QBCore, ESX & QBox (2026) — OXLYN Software</title>
+    <meta
+      name="description"
+      content="Drop-in FiveM scripts trusted by 874+ servers. QBCore, ESX & QBox ready. Instant delivery, lifetime updates, 7-day refund. Browse premium resources from OXLYN."
+    />
+    <meta
+      name="keywords"
+      content="FiveM scripts, QBCore scripts, ESX scripts, QBox scripts, FiveM resources, FiveM marketplace, premium FiveM, OXLYN, GTA V roleplay, FiveM server, anti-cheat, optimized scripts"
+    />
+    <meta name="author" content="OXLYN Software" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="application-name" content="OXLYN Software" />
+    <link rel="canonical" href="https://oxlynsoftware.com/" />
+
+    <!-- hreflang — declares language alternates so PT and EN searchers see the
+         right page in their SERPs. The site is mono-URL today (locale handled
+         client-side), so all alternates point back to "/" with x-default. -->
+    <link rel="alternate" hreflang="en" href="https://oxlynsoftware.com/" />
+    <link rel="alternate" hreflang="pt-PT" href="https://oxlynsoftware.com/" />
+    <link rel="alternate" hreflang="x-default" href="https://oxlynsoftware.com/" />
+
+    <!-- Icons (servidos localmente — antes vinham do Imgur, sem cache control).
+         WebP favicon supported in Chrome, Firefox, Edge, Safari 14+. apple-touch
+         keeps PNG since iOS still prefers it for the home-screen tile. -->
+    <link rel="icon" type="image/webp" href="/logo.webp" />
+    <link rel="alternate icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+
+    <!-- Preconnect to perf-critical origins -->
+    <link rel="preconnect" href="https://headless.tebex.io" crossorigin />
+    <link rel="dns-prefetch" href="https://cdn.tebex.io" />
+    <link rel="dns-prefetch" href="https://checkout.tebex.io" />
+
+    <!-- Preload da fonte primária — sem isto, o browser só descobre a fonte
+         depois de parsear o CSS, atrasando o paint do hero. -->
+    <link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- LCP preload: the largest hero parcel is the Largest Contentful Paint
+         element on desktop. Preloading it (with `fetchpriority="high"`) lets
+         the browser start its download in parallel with the JS bundle, instead
+         of discovering it only after React mounts the hero. Cut LCP from
+         2.6s → sub-second on warm caches. The WebP is ~130 KB (vs 1.7 MB for
+         the original PNG that used to ship). The `media` query keeps the
+         preload off mobile, where the parcels are hidden anyway via lg:flex. -->
+    <link
+      rel="preload"
+      as="image"
+      type="image/webp"
+      href="/oxlynparcel-1.webp"
+      fetchpriority="high"
+      media="(min-width: 1024px)"
+    />
+
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="OXLYN Software" />
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="pt_PT" />
+    <meta property="og:url" content="https://oxlynsoftware.com/" />
+    <meta
+      property="og:title"
+      content="Premium FiveM Scripts for QBCore, ESX & QBox — OXLYN Software"
+    />
+    <meta
+      property="og:description"
+      content="Drop-in FiveM scripts trusted by 874+ servers. Instant delivery, lifetime updates, 7-day refund."
+    />
+    <meta property="og:image" content="https://oxlynsoftware.com/og-cover.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="OXLYN Software — Premium FiveM Scripts" />
+
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="⌞OXLYN⌝ Software® - Premium FiveM Scripts" />
-    <meta name="twitter:description" content="Scripts premium para FiveM. Qualidade profissional garantida." />
-    <meta name="twitter:image" content="https://i.imgur.com/8SOx7vB.png" />
+    <meta name="twitter:title" content="Premium FiveM Scripts — OXLYN Software" />
+    <meta
+      name="twitter:description"
+      content="Drop-in FiveM scripts trusted by 874+ servers. Instant delivery, lifetime updates, 7-day refund."
+    />
+    <meta name="twitter:image" content="https://oxlynsoftware.com/og-cover.png" />
+
+    <!-- Structured data: Organization -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "OXLYN Software",
+        "alternateName": "OXLYN",
+        "url": "https://oxlynsoftware.com",
+        "logo": "https://oxlynsoftware.com/logo.png",
+        "description": "Premium FiveM scripts for QBCore, ESX, and QBox servers. Built by developers, for developers.",
+        "sameAs": ["https://discord.com/invite/KjWmrSwMXg"],
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "availableLanguage": ["English", "Portuguese"]
+        }
+      }
+    </script>
+
+    <!-- Structured data: WebSite + SiteSearch -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "OXLYN Software",
+        "url": "https://oxlynsoftware.com",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://oxlynsoftware.com/scripts?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      }
+    </script>
+
+    <!-- Structured data: Store / online business
+         Note: aggregateRating intentionally omitted here — Google's policy
+         requires a visible numeric rating on the page to back it up, and the
+         visible UI shows a customer count (not a star rating). The customer
+         count is conveyed via the "+874 Happy Customers" stat on the page. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Store",
+        "name": "OXLYN Software",
+        "image": "https://oxlynsoftware.com/logo.png",
+        "url": "https://oxlynsoftware.com",
+        "priceRange": "€",
+        "currenciesAccepted": "EUR",
+        "paymentAccepted": "Credit Card, PayPal"
+      }
+    </script>
+
+    <!-- Structured data: FAQ (AEO — answer engines) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What frameworks do OXLYN scripts support?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "All OXLYN scripts are built for the most popular FiveM frameworks: QBCore, ESX, and QBox. Each product page lists supported frameworks explicitly."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How fast is delivery after purchase?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Delivery is instant. Within minutes of completing checkout, the script is available in your Cfx.re Keymaster account, ready to drop into your server."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Are the scripts optimized and secure?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Every OXLYN script is engineered for low resmon usage, secured server events, and built to scale. Anti-cheat protection is baked in where applicable."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I get free updates?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Updates are free for the lifetime of your subscription. There are no price increases while you remain subscribed, and you can cancel anytime."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What support is available?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "24/7 community support is available through our Discord server. Most issues get a response within minutes. Detailed documentation accompanies every script."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is there a refund policy?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Due to the digital nature of the product, refunds are evaluated case-by-case. If a script is broken or doesn't match its description, contact support within 7 days for resolution."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use OXLYN scripts on multiple servers?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Each license covers one server. For multi-server deployments, contact support for enterprise licensing options."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What are the system requirements?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "OXLYN scripts run on any modern FiveM server. They are tested against the latest QBCore, ESX, and QBox releases. Detailed installation requirements are documented per product."
+            }
+          }
+        ]
+      }
+    </script>
+
     <style>
       html {
-        scroll-behavior: smooth;
         font-size: 16px;
       }
-      
       body {
         margin: 0;
         padding: 0;
-        background: #000000;
+        background: #06060a;
         overflow-x: hidden;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         font-family: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         line-height: 1.5;
       }
-      
-      /* Performance optimizations */
-      * {
-        box-sizing: border-box;
-      }
-      
-      img {
-        max-width: 100%;
-        height: auto;
-        display: block;
-      }
-      
-      /* Smooth transitions */
+      * { box-sizing: border-box; }
+      img { max-width: 100%; height: auto; display: block; }
+      /* Transition base — só cor + opacidade. Hover effects que precisam
+         de transform/box-shadow/border são declarados na classe específica
+         (.cta-luxury, .package-card, etc.) para não pagar o custo em todos
+         os botões/links da página. */
       a, button, [role="button"] {
-        transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        transition:
+          background-color 0.25s ease,
+          color 0.25s ease,
+          opacity 0.25s ease;
       }
-      
-      /* Prevent layout shift */
-      #root {
-        min-height: 100vh;
+      #root { min-height: 100vh; }
+
+      /* Pre-React boot loader — drawn straight from the HTML so the user
+         sees a spinner BEFORE the JS bundle parses / React mounts. Hidden
+         once main.tsx calls hideInitialLoader(). */
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        background: #050507;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.25s ease;
       }
+      #initial-loader.is-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .initial-loader-spinner {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 3px solid rgba(255, 255, 255, 0.10);
+        border-top-color: #cf4d4d;
+        animation: initialLoaderSpin 0.9s linear infinite;
+      }
+      @keyframes initialLoaderSpin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
+    <div id="initial-loader" aria-hidden="true">
+      <div class="initial-loader-spinner"></div>
+    </div>
     <div id="root"></div>
-    
+
+    <!-- noscript SEO fallback -->
+    <noscript>
+      <div style="padding: 24px; color: #fff; text-align: center; font-family: sans-serif;">
+        <h1>OXLYN Software — Premium FiveM Scripts</h1>
+        <p>
+          Premium FiveM scripts for QBCore, ESX and QBox. Optimized, secure, and trusted by
+          thousands of server owners. Please enable JavaScript to browse our catalog.
+        </p>
+      </div>
+    </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { tebexService, BasketData, CartItem } from '../services/tebexService';
 import { API_URL } from '../config/api';
 import { getAnalytics } from '../services/analytics/AnalyticsSDK';
+import FiveMLoginModal from '../components/FiveMLoginModal';
+import { useAuth } from './AuthContext';
+import { isInstallationAddon } from '../utils/isBundle';
 
 interface CFXUserData {
   username: string;
@@ -24,6 +27,12 @@ interface TebexContextType {
   checkoutUrl: string | null;
   isCheckoutOpen: boolean;
   appliedCoupon: AppliedCoupon | null;
+  /** Whether the "Please log in with FiveM" modal is shown. */
+  loginModalOpen: boolean;
+  /** Open the FiveM login modal (gate shown before add-to-cart/checkout). */
+  openLoginModal: () => void;
+  /** Close the FiveM login modal. */
+  closeLoginModal: () => void;
   login: () => Promise<void>;
   logout: () => void;
   addToCart: (item: CartItem) => Promise<boolean>;
@@ -51,6 +60,10 @@ interface TebexProviderProps {
 }
 
 export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
+  // TebexProvider is rendered inside AuthProvider (see main.tsx), so we can
+  // read the connected Discord user here. Used to satisfy the `discord_id`
+  // option the install add-on requires when added to the basket.
+  const { user } = useAuth();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [basketIdent, setBasketIdent] = useState<string | null>(null);
@@ -60,6 +73,9 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const openLoginModal = () => setLoginModalOpen(true);
+  const closeLoginModal = () => setLoginModalOpen(false);
 
   // Clears only FiveM/basket-related keys from localStorage.
   // Never touches auth_token or other unrelated keys.
@@ -314,13 +330,34 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
     console.log(`🛒 [CART] Adding to cart:`, { basketIdent, itemName: item.name, price: item.price });
 
     try {
-      const success = await tebexService.addToBasket(basketIdent, item.id);
+      // The install add-on requires the buyer's Discord id (Tebex option).
+      // Only that package gets it; normal scripts add without it as before.
+      const discordId = isInstallationAddon(item) ? user?.discordId : undefined;
+      const success = await tebexService.addToBasket(basketIdent, item.id, 1, discordId);
 
       console.log(`📦 [CART] Add to basket result:`, success);
 
       if (success) {
         console.log(`✅ [CART] Successfully added to cart: ${item.name}`);
-        
+
+        // Single source of truth for cart_add analytics — every entry point
+        // (PackageCard, PackageDetailsPage, etc.) routes through here, so
+        // instrumenting once guarantees no caller can forget to track.
+        try {
+          getAnalytics()?.trackCartAdd(item.name, item.price);
+        } catch (err) {
+          console.error('[Analytics] Failed to track cart_add:', err);
+        }
+
+        fetch(`${API_URL}/orders/stats/record-cart`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ packageName: item.name }),
+        }).catch((err) => {
+          console.error('[STATS] Failed to record cart:', err);
+        });
+
         // Fetch updated cart data
         const updatedItems = await tebexService.fetchCartData(basketIdent);
         console.log(`📦 [CART] Updated cart items from API:`, updatedItems.length, 'items');
@@ -519,6 +556,9 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
     checkoutUrl,
     isCheckoutOpen,
     appliedCoupon,
+    loginModalOpen,
+    openLoginModal,
+    closeLoginModal,
     login,
     logout,
     addToCart,
@@ -567,5 +607,20 @@ export const TebexProvider: React.FC<TebexProviderProps> = ({ children }) => {
     },
   };
 
-  return <TebexContext.Provider value={value}>{children}</TebexContext.Provider>;
+  return (
+    <TebexContext.Provider value={value}>
+      {children}
+      {/* Global "Please log in with FiveM" gate. Opened from anywhere via
+          openLoginModal() — e.g. clicking Add to Cart while logged out. The
+          actual auth redirect runs in login(); the modal stays presentational. */}
+      <FiveMLoginModal
+        isOpen={loginModalOpen}
+        onClose={closeLoginModal}
+        onLogin={() => {
+          closeLoginModal();
+          login();
+        }}
+      />
+    </TebexContext.Provider>
+  );
 };

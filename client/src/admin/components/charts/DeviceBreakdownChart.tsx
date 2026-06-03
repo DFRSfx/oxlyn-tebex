@@ -84,13 +84,13 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
             <Layers className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <h3 className="text-sm sm:text-base font-semibold text-white">Device Breakdown</h3>
+          <h3 className="text-sm sm:text-base font-semibold text-white">Distribuição por dispositivo</h3>
         </div>
         <div className="h-[280px] flex flex-col items-center justify-center gap-2">
           <div className="w-12 h-12 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-center">
             <Layers className="w-5 h-5 text-gray-600" />
           </div>
-          <p className="text-sm text-gray-500">No device data available</p>
+          <p className="text-sm text-gray-500">Sem dados de dispositivo disponíveis</p>
         </div>
       </div>
     );
@@ -103,7 +103,12 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
         <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
           <Layers className="w-3.5 h-3.5 text-amber-400" />
         </div>
-        <h3 className="text-sm sm:text-base font-semibold text-white">Device Breakdown</h3>
+        <h3
+          className="text-sm sm:text-base font-semibold text-white"
+          title="Como os visitantes acedem ao site. Útil para priorizar otimizações de UI consoante o dispositivo dominante."
+        >
+          Distribuição por dispositivo
+        </h3>
       </div>
 
       {/* Donut + summary side-by-side on desktop, stacked on mobile */}
@@ -135,8 +140,8 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
                   padding: '8px 12px',
                   boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)',
                 }}
-                formatter={(value: number, _name: string, props: any) => [
-                  `${value.toLocaleString()} (${props.payload.percentage.toFixed(1)}%)`,
+                formatter={(value, _name, props: any) => [
+                  `${Number(value ?? 0).toLocaleString('pt-PT')} (${props.payload.percentage.toFixed(1)}%)`,
                   props.payload.name,
                 ]}
               />
@@ -147,9 +152,9 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <p className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold">Total</p>
             <p className="text-2xl font-bold text-white tracking-tight">
-              {totalSessions.toLocaleString()}
+              {totalSessions.toLocaleString('pt-PT')}
             </p>
-            <p className="text-[10px] text-gray-500">sessions</p>
+            <p className="text-[10px] text-gray-500">sessões</p>
           </div>
         </div>
 
@@ -158,7 +163,7 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
           <div className="flex-1 w-full">
             <div className="bg-gradient-to-br from-white/[0.03] to-transparent border border-white/5 rounded-xl p-4">
               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold mb-1.5">
-                Top Device
+                Dispositivo principal
               </p>
               <div className="flex items-center gap-2.5 mb-2">
                 <div
@@ -172,7 +177,7 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
                 <span className={`text-2xl font-bold ${DEVICE_CONFIG[topDevice.device_type]?.textClass || 'text-white'}`}>
                   {topDevice.percentage.toFixed(1)}%
                 </span>
-                <span className="text-xs text-gray-500">of total traffic</span>
+                <span className="text-xs text-gray-500">do tráfego total</span>
               </div>
             </div>
           </div>
@@ -208,7 +213,7 @@ export const DeviceBreakdownChart: React.FC<DeviceBreakdownChartProps> = ({
                         {device.device_type}
                       </p>
                       <p className="text-[10px] sm:text-xs text-gray-500">
-                        {device.count.toLocaleString()} sessions
+                        {device.count.toLocaleString('pt-PT')} sessões
                       </p>
                     </div>
                   </div>

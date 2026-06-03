@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OxlynOS — Live Preview</title>
+    <!--
+      Standalone, in-browser demo of the oxlyn-bossmenu NUI ("OxlynOS").
+      The real resource is driven by the FiveM game client (SendNUIMessage)
+      and an Express-less Lua server (NUI callbacks via fetch to
+      https://oxlyn-bossmenu/<name>). Here, js/demo-bridge.js plays BOTH of
+      those roles: it posts the boot {action:'open'} message and intercepts
+      every NUI fetch with in-memory mock data ported 1:1 from the resource's
+      server/showcase.lua. Nothing about the original NUI code is modified.
+    -->
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+        /* The NUI is designed to float over the transparent game world.
+           In the website iframe we give it a subtle backdrop so the monitor
+           reads as a product shot rather than sitting on raw black. */
+        html, body {
+            margin: 0;
+            height: 100%;
+            background:
+                radial-gradient(120% 120% at 50% 0%, #14161c 0%, #0a0b0f 55%, #050507 100%);
+            overflow: hidden;
+        }
+    </style>
+
+    <!-- ===================================================================
+         LIVE-PREVIEW FIT/SCALE OVERRIDES (presentation only — no boot,
+         data or bridge logic is touched).
+         -------------------------------------------------------------------
+         In-game the NUI floats over the full 1080p viewport, so #monitor is
+         sized fluidly: `width: min(99vw, 96vh*16/9)`. The 96vh budget only
+         covers the monitor; the stand-arm (28px) + stand-base (10px) + their
+         negative margins + the floor shadow stack BELOW it inside the
+         column-flex #monitor-wrap, so the whole thing exceeds 100vh on a
+         short iframe and #os-root (flex-centred, overflow:hidden) clips the
+         top/bottom. On a wide/short iframe the 99vw branch can also make the
+         monitor itself taller than the viewport.
+
+         Fix (same pattern as the MDT preview): give #monitor a FIXED base
+         size so #monitor-wrap has a stable, viewport-independent natural
+         size, then scale the WHOLE wrap with transform:scale(var(--boss-scale))
+         to "contain" it inside the iframe (clamped to <= 1 so it only ever
+         shrinks, never upscales past 1:1). #os-root stays flex-centred so the
+         dark gradient letterboxes cleanly around it. The scaler below
+         recomputes --boss-scale on load, resize and fullscreen change, driven
+         by THIS window's innerWidth/innerHeight (= embedded size when
+         embedded, = screen size in fullscreen — one code path for both).
+         =================================================================== -->
+    <style id="bossmenu-preview-fit">
+      :root { --boss-scale: 1; }
+
+      /* #os-root is the full-viewport flex-centred root: paint the gradient
+         directly on it so it shows around the letterboxed monitor. */
+      #os-root {
+        background:
+          radial-gradient(120% 120% at 50% 0%, #14161c 0%, #0a0b0f 55%, #050507 100%) !important;
+      }
+
+      /* Fixed base size for the monitor so the wrap's natural height/width
+         are constant (1280x720 screen area). The fluid min(99vw, 96vh*16/9)
+         is replaced; the JS scaler does the fitting instead. */
+      #monitor {
+        width: 1280px !important;
+      }
+
+      /* Scale the entire monitor + stand column as one unit, centred.
+         #os-root's flex centring keeps it centred in the leftover space. */
+      #monitor-wrap {
+        transform: scale(var(--boss-scale)) !important;
+        transform-origin: center center !important;
+      }
+
+      /* css/style.css runs `animation: monitorIn .5s ... both` on #monitor-wrap,
+         whose keyframes set `transform: scale(.55)` -> `scale(1)`. An active
+         (or `both`-filled) animation's transform overrides our static
+         transform above, which would snap the wrap back to scale(1) and clip
+         again. Re-declare the keyframes here (later definition wins) so the
+         final frame settles on our computed --boss-scale, and the intro zoom
+         is relative to it. */
+      @keyframes monitorIn {
+        0%   { transform: scale(calc(var(--boss-scale) * .55)); opacity: 0; }
+        100% { transform: scale(var(--boss-scale));             opacity: 1; }
+      }
+      @keyframes monitorOut {
+        0%   { transform: scale(var(--boss-scale));             opacity: 1; }
+        100% { transform: scale(calc(var(--boss-scale) * .6));  opacity: 0; }
+      }
+    </style>
+</head>
+<body>
+
+<div id="os-root" class="hidden">
+  <div id="monitor-wrap">
+    <div id="monitor">
+      <div id="monitor-cam"></div>
+      <div id="screen">
+
+        <section id="login-screen" class="layer hidden">
+            <div class="login-bg" id="login-bg"></div>
+            <div class="login-overlay"></div>
+            <div class="login-clock">
+                <div class="login-day" id="login-day">terça-feira, 5 de maio</div>
+                <div class="login-time" id="login-time">12:00</div>
+            </div>
+            <div class="login-card">
+                <div class="login-users-row" id="login-users-row"></div>
+                <div class="login-password-area" id="login-password-area"></div>
+                <div class="login-error" id="login-error"></div>
+                <div class="login-hint" id="login-hint"></div>
+            </div>
+        </section>
+
+        <section id="desktop" class="layer hidden">
+            <header id="menu-bar">
+                <div class="menu-left">
+                    <div class="menu-item menu-apple" id="apple-menu">
+                        <svg viewBox="0 0 100 100" width="14" height="14">
+                            <path fill="currentColor" d="M50 8 L88 30 L88 70 L50 92 L12 70 L12 30 Z"/>
+                        </svg>
+                    </div>
+                    <div class="menu-item menu-active" id="menu-active-app">Ficheiros</div>
+                    <div class="menu-item menu-bar-trigger" data-menu="ficheiro" data-i18n="app_menu_file">Ficheiro</div>
+                    <div class="menu-item menu-bar-trigger" data-menu="editar"   data-i18n="app_menu_edit">Editar</div>
+                    <div class="menu-item menu-bar-trigger" data-menu="ir"       data-i18n="app_menu_go">Ir</div>
+                    <div class="menu-item menu-bar-trigger" data-menu="janela"   data-i18n="app_menu_window">Janela</div>
+                    <div class="menu-item menu-bar-trigger" data-menu="ajuda"    data-i18n="app_menu_help">Ajuda</div>
+                </div>
+                <div class="menu-right">
+                    <div class="menu-icon" id="menu-volume" title="Volume" data-i18n-title="app_tooltip_volume">
+                        <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M11 5L6 9H2v6h4l5 4V5z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+                    </div>
+                    <div class="menu-icon" id="menu-wifi" title="Wi-Fi" data-i18n-title="app_tooltip_wifi">
+                        <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 18a2 2 0 110 4 2 2 0 010-4zM12 12a8 8 0 015.66 2.34l-1.42 1.42A6 6 0 0012 14a6 6 0 00-4.24 1.76l-1.42-1.42A8 8 0 0112 12zm0-4a12 12 0 018.49 3.51l-1.42 1.42A10 10 0 0012 10a10 10 0 00-7.07 2.93l-1.42-1.42A12 12 0 0112 8zm0-4a16 16 0 0111.31 4.69l-1.41 1.41A14 14 0 0012 6a14 14 0 00-9.9 4.1L.69 8.69A16 16 0 0112 4z"/></svg>
+                    </div>
+                    <div class="menu-icon" id="menu-battery" title="Bateria" data-i18n-title="app_tooltip_battery">
+                        <svg viewBox="0 0 24 14" width="22" height="12"><rect x="0.5" y="0.5" width="20" height="13" rx="3" fill="none" stroke="currentColor"/><rect x="2" y="2" width="17" height="10" rx="1.5" fill="currentColor"/><rect x="21.5" y="4" width="2" height="6" rx="1" fill="currentColor"/></svg>
+                    </div>
+                    <div class="menu-icon" id="menu-control" title="Centro de Controlo" data-i18n-title="app_tooltip_control_center">
+                        <svg viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M3 6h12M3 12h18M3 18h9"/></svg>
+                    </div>
+                    <div class="menu-text" id="menu-date">terça-feira 12:00</div>
+                </div>
+            </header>
+
+            <div id="apple-dropdown" class="dropdown hidden">
+                <div class="dropdown-item" data-action="about"    data-i18n="app_apple_about">Sobre este PC</div>
+                <div class="dropdown-sep"></div>
+                <div class="dropdown-item" data-action="settings" data-i18n="app_apple_settings">Definições do Sistema...</div>
+                <div class="dropdown-item" data-action="store"    data-i18n="app_apple_store">Loja de Apps...</div>
+                <div class="dropdown-sep"></div>
+                <div class="dropdown-item disabled"               data-i18n="app_apple_recent">Itens Recentes</div>
+                <div class="dropdown-sep"></div>
+                <div class="dropdown-item" data-action="lock"     data-i18n="app_apple_lock">Bloquear Ecrã</div>
+                <div class="dropdown-item" data-action="logout"   data-i18n="app_apple_logout">Terminar Sessão</div>
+                <div class="dropdown-sep"></div>
+                <div class="dropdown-item" data-action="shutdown" data-i18n="app_apple_shutdown">Desligar</div>
+            </div>
+
+            <div id="context-menu" class="dropdown hidden"></div>
+            <div id="menu-bar-dropdown" class="dropdown hidden"></div>
+
+            <div id="panel-wifi" class="menu-panel hidden"></div>
+            <div id="panel-battery" class="menu-panel hidden"></div>
+            <div id="panel-volume" class="menu-panel hidden"></div>
+            <div id="panel-control" class="menu-panel hidden"></div>
+
+            <div id="desktop-icons"></div>
+            <div id="window-layer"></div>
+            <footer id="dock"></footer>
+        </section>
+
+        <div id="modal-root"></div>
+
+      </div><!-- /#screen -->
+      <div id="monitor-brand">OXLYN</div>
+    </div><!-- /#monitor -->
+    <div id="monitor-stand-arm"></div>
+    <div id="monitor-stand-base"></div>
+  </div><!-- /#monitor-wrap -->
+</div>
+
+<!-- Library of icons (must load before the apps) -->
+<script src="js/icons.js"></script>
+<!-- Apps (load BEFORE app.js, which registers them on boot) -->
+<script src="js/calculator.js"></script>
+<script src="js/browser.js"></script>
+<script src="js/store.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/clock.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/company.js"></script>
+<script src="js/notes.js"></script>
+<script src="js/reminders.js"></script>
+<!-- OS core -->
+<script src="js/app.js"></script>
+<!-- Website demo bridge: boots the OS + stubs every NUI fetch with mock data.
+     Must load LAST so app.js has already registered its message listener. -->
+<script src="js/demo-bridge.js"></script>
+
+<!-- ===================================================================
+     LIVE-PREVIEW SCALER (presentation only — no boot/data/bridge logic).
+     Fits the fixed-size monitor + stand column into THIS window's
+     innerWidth/innerHeight (embedded size when embedded, screen size in
+     fullscreen) by setting --boss-scale on :root. Clamped to <= 1 so the
+     UI only ever shrinks to fit and never upscales past 1:1 (stays crisp).
+     Recomputes on load, resize and fullscreen change.
+     =================================================================== -->
+<script id="bossmenu-preview-scaler">
+(function () {
+  'use strict';
+
+  var root = document.documentElement;
+
+  // Fraction of the viewport the monitor column may occupy. The leftover
+  // is the dark-gradient letterbox + breathing room for box/floor shadows.
+  var FIT = 0.94;
+
+  function fit() {
+    var wrap = document.getElementById('monitor-wrap');
+    if (!wrap) return;
+
+    // Natural (unscaled) layout size — offsetWidth/Height are the layout box
+    // and are NOT affected by the transform:scale() we apply, so we can read
+    // them directly without resetting the transform.
+    var natW = wrap.offsetWidth;
+    var natH = wrap.offsetHeight;
+    if (!natW || !natH) return; // not laid out yet (e.g. still .hidden)
+
+    var availW = window.innerWidth  * FIT;
+    var availH = window.innerHeight * FIT;
+
+    // Contain on both axes; never scale above 1 (no upscaling past 1:1).
+    var scale = Math.min(availW / natW, availH / natH, 1);
+    if (!isFinite(scale) || scale <= 0) scale = 1;
+
+    root.style.setProperty('--boss-scale', String(scale));
+  }
+
+  // Debounce resize bursts to one rAF per frame.
+  var raf = 0;
+  function schedule() {
+    if (raf) return;
+    raf = requestAnimationFrame(function () { raf = 0; fit(); });
+  }
+
+  window.addEventListener('resize', schedule);
+  window.addEventListener('orientationchange', schedule);
+  document.addEventListener('fullscreenchange', schedule);
+  document.addEventListener('webkitfullscreenchange', schedule);
+
+  // The monitor starts inside `#os-root.hidden` (display:none → 0×0). It is
+  // revealed when the bridge posts {action:'open'}. Recompute once it is
+  // measurable: observe #os-root for the class flip, and also recompute on
+  // first paint + window load as a safety net.
+  function whenReady() {
+    fit();
+    var osRoot = document.getElementById('os-root');
+    if (osRoot && 'MutationObserver' in window) {
+      var mo = new MutationObserver(schedule);
+      mo.observe(osRoot, { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', whenReady);
+  } else {
+    whenReady();
+  }
+  window.addEventListener('load', schedule);
+})();
+</script>
+</body>
+</html>

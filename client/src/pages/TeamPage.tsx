@@ -24,7 +24,7 @@ const TeamPage: React.FC<TeamPageProps> = ({ isLoaded }) => {
   ];
 
   return (
-    <div className="min-h-screen pt-24 pb-20 relative">
+    <div className="min-h-screen pt-8 pb-20 relative">
       {/* Same background as other pages */}
       <div className="absolute inset-0 grid-background opacity-20" />
       <div className="hero-gradient-enhanced absolute inset-0" />
@@ -37,7 +37,7 @@ const TeamPage: React.FC<TeamPageProps> = ({ isLoaded }) => {
       <div className="max-w-7xl mx-auto px-6 relative z-10">
         {/* Header */}
         <div className={`text-center mb-20 transition-all duration-1200 ${isLoaded ? 'apple-fade-in' : 'opacity-0 translate-y-20'}`}>
-          <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/15 to-red-500/15 border border-orange-500/30 mb-8 backdrop-blur-sm">
+          <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/15 to-red-500/15 border border-orange-500/30 mb-8">
             <Users className="w-5 h-5 text-orange-400" />
             <span className="text-sm font-bold text-orange-400 uppercase tracking-widest">Meet the Team</span>
           </div>
@@ -60,7 +60,7 @@ const TeamPage: React.FC<TeamPageProps> = ({ isLoaded }) => {
               style={{ transitionDelay: `${600 + index * 200}ms` }}
             >
               {/* Card */}
-              <div className="relative h-full p-8 rounded-3xl bg-gradient-to-br from-zinc-900/90 to-black/90 border border-zinc-800 hover:border-orange-500/50 backdrop-blur-sm transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/20">
+              <div className="relative h-full p-8 rounded-3xl bg-gradient-to-br from-zinc-900/90 to-black/90 border border-zinc-800 hover:border-orange-500/50 transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/20">
                 {/* Glow effect on hover */}
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-orange-500/0 to-red-500/0 group-hover:from-orange-500/10 group-hover:to-red-500/10 transition-all duration-500" />
                 
@@ -106,7 +106,7 @@ const TeamPage: React.FC<TeamPageProps> = ({ isLoaded }) => {
 
         {/* Bottom CTA */}
         <div className={`text-center mt-20 transition-all duration-1400 ${isLoaded ? 'apple-fade-in' : 'opacity-0 translate-y-20'}`} style={{ transitionDelay: '1000ms' }}>
-          <div className="inline-block p-8 rounded-3xl bg-gradient-to-br from-zinc-900/90 to-black/90 border border-zinc-800 backdrop-blur-sm">
+          <div className="inline-block p-8 rounded-3xl bg-gradient-to-br from-zinc-900/90 to-black/90 border border-zinc-800">
             <h3 className="text-2xl font-bold text-white mb-3">
               Junte-se à Nossa Comunidade
             </h3>
@@ -114,7 +114,7 @@ const TeamPage: React.FC<TeamPageProps> = ({ isLoaded }) => {
               Faça parte da comunidade OXLYN e tenha acesso a suporte dedicado e atualizações exclusivas
             </p>
             <button
-              onClick={() => window.open('https://discord.gg/oxlyn', '_blank')}
+              onClick={() => window.open('https://discord.com/invite/KjWmrSwMXg', '_blank')}
               className="px-6 py-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-semibold rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-orange-500/50 flex items-center gap-2 mx-auto"
             >
               <svg className="w-5 h-5" viewBox="0 0 16 16" fill="currentColor">

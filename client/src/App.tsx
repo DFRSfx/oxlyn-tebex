@@ -1,42 +1,45 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Navigation from './components/Navigation';
+import PromoBar from './components/PromoBar';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
-import ScriptsPage from './pages/ScriptsPage';
-import CartPage from './pages/CartPage';
-import PackageDetailsPage from './pages/PackageDetailsPage';
-import CheckoutCancelled from './pages/CheckoutCancelled';
-import TermsPage from './pages/TermsPage';
 import CheckoutModal from './components/CheckoutModal';
-import AdminApp from './admin/AdminApp';
+import RouteLoader from './components/RouteLoader';
+import FirstCustomerPopup from './components/FirstCustomerPopup';
 import DiscordCallback from './admin/pages/DiscordCallback';
 import { useAuth } from './context/AuthContext';
 import { Package } from './types';
-import { scrollToSection, handleDiscordRedirect, handleTebexRedirect } from './utils/helpers';
+import { handleDiscordRedirect } from './utils/helpers';
 import { useTebex } from './context/TebexContext';
 import { tebexService } from './services/tebexService';
 import { mapTebexPackageToPackage } from './utils/packageMapper';
-import Loader from './components/Loader';
+import { INSTALL_ADDON_TEBEX_ID } from './utils/isBundle';
+import { packageOrderService, applyPackageOrder } from './services/packageOrderService';
 import { useAnalytics } from './hooks/useAnalytics';
 import { launchTebexCheckout } from './utils/tebexCheckout';
+import { API_URL } from './config/api';
 import './styles/App.css';
 
+// Lazy-load non-critical routes — keeps the landing page bundle small.
+const ScriptsPage = lazy(() => import('./pages/ScriptsPage'));
+const BundlesPage = lazy(() => import('./pages/BundlesPage'));
+const CartPage = lazy(() => import('./pages/CartPage'));
+const PackageDetailsPage = lazy(() => import('./pages/PackageDetailsPage'));
+const CheckoutCancelled = lazy(() => import('./pages/CheckoutCancelled'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'));
+const AdminApp = lazy(() => import('./admin/AdminApp'));
 
 
-const TEBEX_API_BASE = 'https://headless.tebex.io/api';
 
 async function completeTebexBasket(basketIdent: string, packageId: number) {
   try {
-    // Add package to basket (user is now authenticated via Tebex auth flow)
-    const addResponse = await fetch(`${TEBEX_API_BASE}/baskets/${basketIdent}/packages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ package_id: packageId, quantity: 1 }),
-    });
-
-    if (!addResponse.ok) {
-      console.error('Failed to add package after auth:', addResponse.status, await addResponse.text());
+    // Add package to basket via our backend proxy (user is now authenticated
+    // via Tebex auth flow). The Tebex token never reaches the browser.
+    const ok = await tebexService.addToBasket(basketIdent, packageId, 1);
+    if (!ok) {
+      console.error('Failed to add package after auth');
       return;
     }
 
@@ -48,8 +51,8 @@ async function completeTebexBasket(basketIdent: string, packageId: number) {
 }
 
 function App() {
-  const { isLoading: isTebexLoading, loadingMessage, isCheckoutOpen, checkoutUrl, closeCheckout, enrichCartWithPackageData } = useTebex();
-  const { user, isAuthenticated, isDiscordLinked, loading: authLoading } = useAuth();
+  const { isCheckoutOpen, checkoutUrl, closeCheckout, enrichCartWithPackageData } = useTebex();
+  const { user, isAuthenticated, isDiscordLinked } = useAuth();
 
   // Handle Tebex basket auth callback (redirected back after game account login)
   useEffect(() => {
@@ -63,45 +66,72 @@ function App() {
     }
   }, []);
 
+  // Register the visit for the IP Connection admin panel. We fire once per
+  // tab-session — the server still de-duplicates inside a 10-min sliding
+  // window, but skipping the extra POST keeps the request log quiet during
+  // SPA navigation within the same tab.
+  useEffect(() => {
+    if (sessionStorage.getItem('__oxlyn_ip_pinged')) return;
+    sessionStorage.setItem('__oxlyn_ip_pinged', '1');
+    fetch(`${API_URL}/ip-connection`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
+  }, []);
+
   // Check if we're on the checkout-cancelled page
   if (window.location.pathname === '/checkout-cancelled') {
-    return <CheckoutCancelled />;
+    return (
+      <Suspense fallback={null}>
+        <CheckoutCancelled />
+      </Suspense>
+    );
   }
   const [isLoaded, setIsLoaded] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
+  // Track only whether the user has scrolled past the navbar threshold —
+  // a boolean changes ~once per session, while a numeric scrollY would
+  // re-render the whole tree on every scroll pixel.
+  const [isScrolled, setIsScrolled] = useState(false);
   const [packages, setPackages] = useState<Package[]>([]);
   const [isLoadingPackages, setIsLoadingPackages] = useState(true);
+
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoaded(true), 100);
 
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll);
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const scrolled = window.scrollY > 30;
+        setIsScrolled((prev) => (prev !== scrolled ? scrolled : prev));
+        ticking = false;
+      });
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            // Sections intersection logic if needed
-          }
-        });
-      },
-      { threshold: 0.1, rootMargin: '100px' }
-    );
-
-    document.querySelectorAll('[id]').forEach((el) => observer.observe(el));
-
-    // Fetch packages from Tebex API (only on mount)
+    // Fetch packages from Tebex + admin-defined ordering, then sort
     const fetchPackages = async () => {
       setIsLoadingPackages(true);
       try {
-        const tebexPackages = await tebexService.fetchPackages();
-        const mappedPackages = tebexPackages.map(mapTebexPackageToPackage);
-        setPackages(mappedPackages);
-        enrichCartWithPackageData(mappedPackages);
+        const [tebexPackages, orderEntries] = await Promise.all([
+          tebexService.fetchPackages(),
+          packageOrderService.fetch(),
+        ]);
+        // Hide the "Oxlyn Installation" professional-install add-on (id 7473819)
+        // from the whole browsable catalog — scripts, bundles, Top Scripts, cart
+        // suggestions, package-details variants, categories, search. It's added
+        // only from the cart as the install order bump.
+        const mappedPackages = tebexPackages
+          .filter((p) => p.id !== INSTALL_ADDON_TEBEX_ID)
+          .map(mapTebexPackageToPackage);
+        const ordered = applyPackageOrder(mappedPackages, orderEntries);
+        setPackages(ordered);
+        enrichCartWithPackageData(ordered);
       } catch (error) {
         console.error('Failed to fetch packages:', error);
-        setPackages([]); // Set empty array on error
+        setPackages([]);
       } finally {
         setIsLoadingPackages(false);
       }
@@ -112,25 +142,22 @@ function App() {
     return () => {
       clearTimeout(timer);
       window.removeEventListener('scroll', handleScroll);
-      observer.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount, not when enrichCartWithPackageData changes
 
-  if (isTebexLoading || isLoadingPackages || authLoading) {
-    return <Loader message={loadingMessage || 'Loading packages...'} />;
-  }
-  
   return (
     <>
     <Routes>
         {/* Admin Routes */}
         <Route path="/admin/discord-success" element={<DiscordCallback />} />
-        <Route 
-        path="/admin/*" 
+        <Route
+        path="/admin/*"
         element={
           isAuthenticated && isDiscordLinked && user?.role === 'admin' ? (
-            <AdminApp />
+            <Suspense fallback={null}>
+              <AdminApp />
+            </Suspense>
           ) : (
             <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4">
               <div className="max-w-md w-full bg-[#0f0f0f] border border-white/5 rounded-lg shadow-xl p-8 text-center">
@@ -160,8 +187,9 @@ function App() {
       {/* Public Routes */}
       <Route path="/*" element={<MainApp
         isLoaded={isLoaded}
-        scrollY={scrollY}
+        isScrolled={isScrolled}
         packages={packages}
+        isLoadingPackages={isLoadingPackages}
         isCheckoutOpen={isCheckoutOpen}
         checkoutUrl={checkoutUrl}
         closeCheckout={closeCheckout}
@@ -173,8 +201,9 @@ function App() {
 
 interface MainAppProps {
   isLoaded: boolean;
-  scrollY: number;
+  isScrolled: boolean;
   packages: Package[];
+  isLoadingPackages: boolean;
   isCheckoutOpen: boolean;
   checkoutUrl: string | null;
   closeCheckout: () => void;
@@ -182,15 +211,30 @@ interface MainAppProps {
 
 function MainApp({
   isLoaded,
-  scrollY,
+  isScrolled,
   packages,
+  isLoadingPackages,
   isCheckoutOpen,
   checkoutUrl,
   closeCheckout,
 }: MainAppProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { trackPageView } = useAnalytics();
+  const { trackPageView, setSuppressed } = useAnalytics();
+  const { user } = useAuth();
+
+  // Initial site loader is rendered from index.html (#initial-loader) and
+  // hidden inside main.tsx once React commits — guarantees the spinner
+  // paints BEFORE any React tree, instead of after.
+
+  // Keep admin accounts (james, oxlyn, soares, …) out of the storefront
+  // analytics entirely. When auth resolves the visitor as an admin we
+  // suppress all tracking; the SDK also persists this so repeat visits are
+  // suppressed from the very first event. Non-admins (or logged-out) clear
+  // the flag so normal visitors are always counted.
+  useEffect(() => {
+    setSuppressed(user?.role === 'admin');
+  }, [user?.role, setSuppressed]);
 
   // Track page views on route change
   useEffect(() => {
@@ -219,18 +263,25 @@ function MainApp({
     navigate(`/product/${slug}`, { state: { package: pkg, fromScripts: true } });
   };
 
-  // Determine background based on route
+  // Single global background applied across every public route
   const isProductPage = location.pathname.startsWith('/product/');
-  const backgroundClass = isProductPage
-    ? "fixed inset-0 bg-gradient-to-br from-black via-gray-900 to-black pointer-events-none z-0"
-    : "page-gradient fixed inset-0 pointer-events-none z-0";
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-x-hidden relative">
-      <div className={backgroundClass} />
+    // `overflow-x: clip` (instead of `hidden`) — keeps horizontal overflow
+    // from causing a page-wide scrollbar without creating a scroll context.
+    // `overflow: hidden` would break `position: sticky` on the navbar inside
+    // this tree; `clip` doesn't.
+    <div className="min-h-screen bg-black text-white relative" style={{ overflowX: 'clip' }}>
+      {/* Background unificado — antes eram 3 elementos fixed separados (gradient,
+          grid, noise). Agora um único <div> com múltiplos background-image
+          empilhados via CSS custom property. Mesmo paint, menos camadas
+          de composição e menos custo de layout. */}
+      <div className="site-background fixed inset-0 pointer-events-none z-0" />
+
+      <PromoBar />
 
       <Navigation
-        scrollY={scrollY}
+        isScrolled={isScrolled}
         isLoaded={isLoaded}
         currentPage={isProductPage ? 'package-details' : location.pathname === '/scripts' ? 'scripts' : 'home'}
         packages={packages}
@@ -240,36 +291,66 @@ function MainApp({
         openPackageDetails={openPackageDetailsFromHome}
       />
 
-      <Routes>
-        <Route path="/" element={
-          <HomePage
-            isLoaded={isLoaded}
-            packages={packages}
-            navigateToScripts={() => navigate('/scripts')}
-            openPackageDetails={openPackageDetailsFromHome}
-            handleDiscordRedirect={handleDiscordRedirect}
-          />
-        } />
-        <Route path="/scripts" element={
-          <ScriptsPage
-            isLoaded={isLoaded}
-            packages={packages}
-            openPackageDetails={openPackageDetailsFromScripts}
-          />
-        } />
-        <Route path="/product/:productSlug" element={
-          <PackageDetailsPage packages={packages} />
-        } />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/terms" element={<TermsPage />} />
-      </Routes>
+      {/* Suspense fallback — RouteLoader shows whenever a lazy-loaded chunk
+          (ScriptsPage, BundlesPage, SubscriptionPage, etc.) is still
+          downloading. Already-cached chunks resolve synchronously so there's
+          no flash on revisits. */}
+      <Suspense fallback={<RouteLoader />}>
+        <Routes>
+          <Route path="/" element={
+            <HomePage
+              isLoaded={isLoaded}
+              packages={packages}
+              navigateToScripts={() => navigate('/scripts')}
+              openPackageDetails={openPackageDetailsFromHome}
+              handleDiscordRedirect={handleDiscordRedirect}
+            />
+          } />
+          <Route path="/scripts" element={
+            <ScriptsPage
+              isLoaded={isLoaded}
+              packages={packages}
+              openPackageDetails={openPackageDetailsFromScripts}
+              initialBrand="oxlyn"
+            />
+          } />
+          {/* Dedicated shortlink for the Vanguard catalogue — same page,
+              just pre-selected on the Vanguard tab. Convenient for YouTube
+              descriptions and other social links: /vanguardscripts. */}
+          <Route path="/vanguardscripts" element={
+            <ScriptsPage
+              isLoaded={isLoaded}
+              packages={packages}
+              openPackageDetails={openPackageDetailsFromScripts}
+              initialBrand="vanguard"
+            />
+          } />
+          <Route path="/bundles" element={
+            <BundlesPage
+              isLoaded={isLoaded}
+              packages={packages}
+              openPackageDetails={openPackageDetailsFromScripts}
+              initialBrand="oxlyn"
+            />
+          } />
+          <Route path="/vanguardbundles" element={
+            <BundlesPage
+              isLoaded={isLoaded}
+              packages={packages}
+              openPackageDetails={openPackageDetailsFromScripts}
+              initialBrand="vanguard"
+            />
+          } />
+          <Route path="/product/:productSlug" element={
+            <PackageDetailsPage packages={packages} isLoadingPackages={isLoadingPackages} />
+          } />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/subscription" element={<SubscriptionPage packages={packages} />} />
+        </Routes>
+      </Suspense>
 
-      <Footer
-        navigateToScripts={() => navigate('/scripts')}
-        scrollToSection={scrollToSection}
-        handleDiscordRedirect={handleDiscordRedirect}
-        handleTebexRedirect={handleTebexRedirect}
-      />
+      <Footer />
 
       {/* Checkout Modal */}
       <CheckoutModal
@@ -277,6 +358,17 @@ function MainApp({
         checkoutUrl={checkoutUrl || ''}
         onClose={closeCheckout}
       />
+
+      {/* First-customer welcome popup — auto-shows after ~5s on first visit,
+          24h cooldown after dismiss / 30 days after copy. Hidden on the
+          checkout-cancelled and admin contexts because those flow paths
+          are mid-funnel and a discount popup there is jarring. */}
+      {!location.pathname.startsWith('/admin') &&
+       !location.pathname.startsWith('/cart') &&
+       !location.pathname.startsWith('/checkout-cancelled') && (
+        <FirstCustomerPopup />
+      )}
+
     </div>
   );
 }

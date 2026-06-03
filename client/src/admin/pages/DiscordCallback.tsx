@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import OptimizedImage from '../../components/OptimizedImage';
 
 // Capture token IMMEDIATELY before any re-renders
 const urlParams = new URLSearchParams(window.location.search);
@@ -93,9 +94,11 @@ export default function DiscordCallback() {
         <>
           <div className="relative flex justify-center items-center">
             <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-red-500"></div>
-            <img
-              src="https://i.imgur.com/ndYSTED.png"
+            <OptimizedImage
+              src="/logo.webp"
               alt="Loading"
+              width={96}
+              format="webp"
               className="absolute h-16 w-16"
             />
           </div>

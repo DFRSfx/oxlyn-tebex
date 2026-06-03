@@ -90,13 +90,13 @@ export const GeographicChart: React.FC<GeographicChartProps> = ({ data, loading 
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
             <Globe className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <h3 className="text-sm sm:text-base font-semibold text-white">Geographic Distribution</h3>
+          <h3 className="text-sm sm:text-base font-semibold text-white">Distribuição geográfica</h3>
         </div>
         <div className="h-[280px] flex flex-col items-center justify-center gap-2">
           <div className="w-12 h-12 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-center">
             <Globe className="w-5 h-5 text-gray-600" />
           </div>
-          <p className="text-sm text-gray-500">No geographic data available</p>
+          <p className="text-sm text-gray-500">Sem dados geográficos disponíveis</p>
         </div>
       </div>
     );
@@ -110,36 +110,50 @@ export const GeographicChart: React.FC<GeographicChartProps> = ({ data, loading 
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
             <Globe className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <h3 className="text-sm sm:text-base font-semibold text-white">Geographic Distribution</h3>
+          <h3
+            className="text-sm sm:text-base font-semibold text-white"
+            title="País dos visitantes (detetado pelo IP). Países com taxa de conversão alta podem justificar marketing local."
+          >
+            Distribuição geográfica
+          </h3>
         </div>
 
         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/10">
           <MapPin className="w-3 h-3 text-gray-500" />
           <span className="text-[11px] text-gray-400 font-semibold">
-            {enrichedData.length} {enrichedData.length === 1 ? 'country' : 'countries'}
+            {enrichedData.length} {enrichedData.length === 1 ? 'país' : 'países'}
           </span>
         </div>
       </div>
 
       {/* Summary stats row */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-5 sm:mb-6">
-        <div className="p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+        <div
+          className="p-3 bg-white/[0.02] border border-white/5 rounded-lg"
+          title="Total de sessões somadas em todos os países."
+        >
           <p className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold mb-1">
-            Total Sessions
+            Sessões totais
           </p>
-          <p className="text-base sm:text-lg font-bold text-white">{totalSessions.toLocaleString()}</p>
+          <p className="text-base sm:text-lg font-bold text-white">{totalSessions.toLocaleString('pt-PT')}</p>
         </div>
-        <div className="p-3 bg-amber-500/[0.04] border border-amber-500/10 rounded-lg">
+        <div
+          className="p-3 bg-amber-500/[0.04] border border-amber-500/10 rounded-lg"
+          title="Sessões que terminaram em compra."
+        >
           <p className="text-[9px] text-amber-400/70 uppercase tracking-widest font-semibold mb-1">
-            Conversions
+            Conversões
           </p>
           <p className="text-base sm:text-lg font-bold text-amber-400">
-            {totalConversions.toLocaleString()}
+            {totalConversions.toLocaleString('pt-PT')}
           </p>
         </div>
-        <div className="p-3 bg-emerald-500/[0.04] border border-emerald-500/10 rounded-lg">
+        <div
+          className="p-3 bg-emerald-500/[0.04] border border-emerald-500/10 rounded-lg"
+          title="Conversões a dividir por sessões totais."
+        >
           <p className="text-[9px] text-emerald-400/70 uppercase tracking-widest font-semibold mb-1">
-            Conv. Rate
+            Taxa de conv.
           </p>
           <p className="text-base sm:text-lg font-bold text-emerald-400">
             {overallConvRate.toFixed(1)}%
@@ -150,7 +164,7 @@ export const GeographicChart: React.FC<GeographicChartProps> = ({ data, loading 
       {/* Country list */}
       <div className="space-y-2">
         <h4 className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold mb-2">
-          Top Countries
+          Top países
         </h4>
         {enrichedData.slice(0, 8).map((country, index) => {
           const widthPercent = (country.sessions / maxSessions) * 100;
@@ -193,9 +207,9 @@ export const GeographicChart: React.FC<GeographicChartProps> = ({ data, loading 
                       {country.country}
                     </p>
                     <p className="text-[10px] sm:text-xs text-gray-500">
-                      {country.sessions.toLocaleString()} sessions
+                      {country.sessions.toLocaleString('pt-PT')} sessões
                       {country.conversions > 0 && (
-                        <> • {country.conversions.toLocaleString()} conv.</>
+                        <> • {country.conversions.toLocaleString('pt-PT')} conv.</>
                       )}
                     </p>
                   </div>
@@ -211,11 +225,12 @@ export const GeographicChart: React.FC<GeographicChartProps> = ({ data, loading 
                         ? 'text-amber-400'
                         : 'text-gray-400'
                     }`}
+                    title="Verde: ≥5% (excelente). Amarelo: 1-5% (médio). Cinzento: <1% (baixo)."
                   >
                     {country.conversionRate.toFixed(1)}%
                   </p>
                   <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">
-                    conv. rate
+                    taxa conv.
                   </p>
                 </div>
               </div>
@@ -227,7 +242,7 @@ export const GeographicChart: React.FC<GeographicChartProps> = ({ data, loading 
       {/* "More countries" hint */}
       {enrichedData.length > 8 && (
         <p className="text-[11px] text-gray-500 text-center mt-3">
-          + {enrichedData.length - 8} more {enrichedData.length - 8 === 1 ? 'country' : 'countries'}
+          + {enrichedData.length - 8} {enrichedData.length - 8 === 1 ? 'outro país' : 'outros países'}
         </p>
       )}
     </div>

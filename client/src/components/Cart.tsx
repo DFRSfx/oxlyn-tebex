@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, ShoppingCart, ExternalLink } from 'lucide-react';
 import { useTebex } from '../context/TebexContext';
+import { useCurrency } from '../context/CurrencyContext';
 import { formatCategoryName } from '../utils/helpers';
 import { useAnalytics } from '../hooks/useAnalytics';
 
@@ -11,11 +12,11 @@ interface CartProps {
 
 const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
   const { cartItems, removeFromCart, proceedToCheckout, isLoggedIn } = useTebex();
+  const { format: formatPrice, currency } = useCurrency();
   const { trackEvent } = useAnalytics();
 
   const totalItems = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const totalPrice = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const currency = cartItems[0]?.currency || 'EUR';
 
   const state = isOpen ? 'open' : 'closed';
 
@@ -113,7 +114,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
                     <div className="flex items-center justify-between mt-auto">
                       <p className="text-xs text-neutral-400">Quantity: {item.qty}</p>
                       <div className="text-base font-bold gradient-text-brand">
-                        {currency === 'EUR' ? '€' : '$'}{(item.price * item.qty).toFixed(2)}
+                        {formatPrice(item.price * item.qty)}
                       </div>
                     </div>
                   </div>
@@ -138,8 +139,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose }) => {
             <div className="flex justify-between text-lg font-bold text-white">
               <span>Total</span>
               <span className="gradient-text-brand">
-                {currency === 'EUR' ? '€' : '$'}
-                {totalPrice.toFixed(2)}
+                {formatPrice(totalPrice)}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">

@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Oxlyn MDT &amp; Dispatch — Live Preview</title>
+
+  <!-- Font Awesome Pro v7.2.0 — repointed from the jsdelivr CDN to the
+       locally-hosted copy under /fontawesome/css so the production VPS
+       Content-Security-Policy doesn't block them (same fix as OBD/Truck).
+       brands.css is omitted (no brand icons are used in this UI). -->
+  <link rel="stylesheet" href="/fontawesome/css/fontawesome.css" />
+  <link rel="stylesheet" href="/fontawesome/css/sharp-solid.css" />
+  <link rel="stylesheet" href="/fontawesome/css/sharp-regular.css" />
+  <link rel="stylesheet" href="/fontawesome/css/sharp-light.css" />
+  <link rel="stylesheet" href="/fontawesome/css/sharp-duotone-solid.css" />
+  <link rel="stylesheet" href="/fontawesome/css/duotone.css" />
+  <link rel="stylesheet" href="/fontawesome/css/solid.css" />
+  <link rel="stylesheet" href="/fontawesome/css/regular.css" />
+  <link rel="stylesheet" href="/fontawesome/css/light.css" />
+
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+<style id="mdt-preview-backdrop">
+  /* !important: css/style.css sets `html, body { background: transparent !important }`
+     (transparent for the in-game overlay). It is linked ABOVE this block, so a
+     later !important rule of equal specificity wins on source order. */
+  html, body { margin:0; height:100%; background: radial-gradient(120% 120% at 50% 0%, #14161c 0%, #0a0b0f 55%, #050507 100%) !important; overflow:hidden; }
+
+  /* ===================================================================
+     LIVE-PREVIEW PRESENTATION OVERRIDES. Presentation only: no boot,
+     data, or bridge logic is touched.
+     -------------------------------------------------------------------
+     The MDT NUI is a fixed-resolution tablet of 1620x980 (.tablet) that
+     normally fills the whole 1080p game viewport and is centred by #root
+     (position:fixed; inset:0). Inside the sales iframe it is bigger than
+     the viewport, so its edges (and tall views like the camera overlay)
+     get clipped. We scale the fixed-size canvas down with transform:scale()
+     to "contain" it, centred, letting the dark gradient backdrop show in
+     the leftover space.
+     =================================================================== */
+
+  :root { --mdt-scale: 1; }
+
+  /* #root is `position:fixed; inset:0` (full viewport). Paint the dark
+     gradient backdrop directly on it (it covers the whole viewport behind
+     the centered tablet) — matching the OBD / Containers previews. */
+  #root { background: radial-gradient(120% 120% at 50% 0%, #14161c 0%, #0a0b0f 55%, #050507 100%) !important; }
+
+  /* Scale the tablet to fit BOTH axes of the viewport, centred. */
+  .tablet {
+    transform: scale(var(--mdt-scale)) !important;
+    transform-origin: center center !important;
+  }
+
+  /* ENTRANCE-ANIMATION FIX (critical for small embeds).
+     css/style.css runs `.tablet { animation: tablet-in 0.55s ... }` whose
+     keyframes animate `transform` from scale(0.88) up to scale(1). A running
+     CSS animation overrides even our `transform: ... !important` for its whole
+     duration, so on a small embedded iframe the tablet would render at its FULL
+     1620x980 (scale ~1) for 0.55s and get clipped — the "half cut off" flash.
+     Replace the entrance with an opacity-only fade that never touches transform,
+     so the scaled (contained) size applies on the very first frame. The
+     keyframe name is preview-local so it can't collide with the resource. */
+  .tablet {
+    animation: mdt-preview-tablet-in 0.45s var(--ease-out-soft, ease-out) both !important;
+  }
+  @keyframes mdt-preview-tablet-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* The in-game camera / "Surveillance" viewfinder is a viewport-fixed
+     overlay whose REC badge / corner brackets sit near the top. Constrain
+     it to the same 1620x980 base canvas, centre it, and scale it with the
+     same factor so nothing at the top is cut. */
+  #camera-overlay:not(.hidden) {
+    inset: auto !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 1620px !important;
+    height: 980px !important;
+    transform: translate(-50%, -50%) scale(var(--mdt-scale)) !important;
+    transform-origin: center center !important;
+  }
+
+  /* The Activity-24h chart tooltip sits ABOVE the hovered bar via
+     transform:translateY(-100%), but .chart-stack-wrap has overflow:hidden
+     which chopped it off. Allow it to overflow its own box. */
+  .chart-stack-wrap { overflow: visible !important; }
+
+  /* COMMS / messages panel — kill the dead vertical space under the composer.
+     css/style.css gives `.chat-shell { height: 540px }` (baked for the full
+     in-game 1080p viewport). Here the messages view sits in the scrollable
+     `.content` area, taller than 540px, leaving an empty band below the chat.
+     Make the messages view fill the available height and let the chat grow
+     into it. `.chat-feed` keeps `flex:1; overflow-y:auto`, so scrolling is
+     unchanged when there are many messages. */
+  .app:has(> .chat-shell) {
+    flex: 1 1 auto !important;
+    min-height: 100% !important;
+  }
+  .chat-shell {
+    height: auto !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  }
+</style>
+</head>
+<body>
+
+<!-- Overlays in-game (sempre visíveis, fora do tablet) -->
+<div id="dispatch-overlay"></div>
+
+<!-- ============== CÂMARA MDT — Overlay full-screen ============== -->
+<div id="camera-overlay" class="hidden">
+  <!-- LIVE viewfinder -->
+  <div id="cam-live" class="cam-live hidden">
+    <div class="camo-ui">
+      <!-- Brackets -->
+      <div class="camo-bracket camo-bracket-tl"></div>
+      <div class="camo-bracket camo-bracket-tr"></div>
+      <div class="camo-bracket camo-bracket-bl"></div>
+      <div class="camo-bracket camo-bracket-br"></div>
+
+      <!-- Crosshair central + grid 3×3 -->
+      <div class="camo-grid"></div>
+      <div class="camo-crosshair">
+        <span></span><span></span>
+      </div>
+
+      <!-- Top centro: REC -->
+      <div class="camo-top">
+        <span class="camo-rec"><span class="camo-rec-dot"></span> REC · LSPD-CAM</span>
+      </div>
+
+      <!-- Bottom esquerda: zona/morada + timestamp -->
+      <div class="camo-bl">
+        <div class="camo-coords" id="camo-coords">— · —</div>
+        <div class="camo-time"  id="camo-time">--:--:--</div>
+      </div>
+
+      <!-- Bottom direita: barra de zoom + multiplicador -->
+      <div class="camo-br">
+        <div class="camo-zoom-block">
+          <div class="camo-zoom-row">
+            <span class="camo-zoom-x" id="camo-zoom-x">1.0×</span>
+            <span class="camo-zoom-fov" id="camo-zoom-fov">FOV 60.0</span>
+          </div>
+          <div class="camo-zoom-bar">
+            <div class="camo-zoom-fill" id="camo-zoom-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hint inferior centro -->
+      <div class="camo-hint">
+        <span class="camo-key" data-i18n="cam.key.space">ESPAÇO</span> <span data-i18n="cam.shutter">capturar</span>
+        <span class="camo-key" data-i18n="cam.key.wheel">RODA</span> <span data-i18n="cam.zoom">zoom</span>
+        <span class="camo-key" data-i18n="cam.key.esc">ESC</span> <span data-i18n="common.cancel">cancelar</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW (após captura) -->
+  <div id="cam-preview-screen" class="cam-preview-screen hidden">
+    <img id="camo-preview-img" alt="" />
+    <div class="camo-preview-stamp" id="camo-preview-stamp">EVIDENCE · LSPD --:--:--</div>
+    <div class="camo-preview-actions">
+      <button class="btn btn-ghost camo-btn"   id="camo-retake">
+        <i class="fa-sharp fa-solid fa-rotate-left"></i> <span data-i18n="cam.retake">Repetir</span>
+      </button>
+      <button class="btn btn-ghost camo-btn"   id="camo-cancel">
+        <i class="fa-sharp fa-solid fa-xmark"></i> <span data-i18n="cam.discard">Descartar</span>
+      </button>
+      <button class="btn btn-warning camo-btn camo-btn-primary" id="camo-accept">
+        <i class="fa-sharp fa-solid fa-check"></i> <span data-i18n="cam.accept">Aceitar</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast de erro -->
+  <div id="camo-error" class="camo-error hidden">
+    <i class="fa-sharp fa-solid fa-circle-exclamation"></i>
+    <span id="camo-error-msg">—</span>
+  </div>
+</div>
+
+<!-- Wrapper: pode ter ou não a classe "open" -->
+<div id="root" class="hidden">
+
+  <!-- Tablet (frame físico) -->
+  <div class="tablet">
+
+    <!-- Botão de hardware (lado direito do tablet) -->
+    <div class="tablet-power" title="Bloquear (ESC)"></div>
+
+    <!-- Câmara -->
+    <div class="tablet-camera"></div>
+
+    <!-- Ecrã -->
+    <div class="screen">
+
+      <!-- LOCK SCREEN — iOS Tablet style -->
+      <div class="lock-screen" id="lock-screen">
+        <!-- Wallpaper LSPD -->
+        <div class="lock-wallpaper">
+          <div class="lw-grad"></div>
+          <div class="lw-spotlight"></div>
+          <svg class="lw-shield" viewBox="0 0 100 120" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <defs>
+              <linearGradient id="lw-shield-grad" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.05"/>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0.005"/>
+              </linearGradient>
+            </defs>
+            <path d="M50 4 L92 18 L92 62 C92 88 74 108 50 116 C26 108 8 88 8 62 L8 18 Z"
+                  fill="url(#lw-shield-grad)"
+                  stroke="rgba(255,255,255,0.10)" stroke-width="0.6"/>
+            <path d="M50 18 L82 28 L82 60 C82 80 68 95 50 102 C32 95 18 80 18 60 L18 28 Z"
+                  fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="0.4"/>
+            <text x="50" y="55" text-anchor="middle"
+                  fill="rgba(255,255,255,0.10)" font-family="Inter, sans-serif"
+                  font-size="14" font-weight="900" letter-spacing="2">LSPD</text>
+            <text x="50" y="72" text-anchor="middle"
+                  fill="rgba(255,255,255,0.06)" font-family="Inter, sans-serif"
+                  font-size="5" font-weight="700" letter-spacing="3">LOS ANGELES</text>
+            <text x="50" y="80" text-anchor="middle"
+                  fill="rgba(255,255,255,0.06)" font-family="Inter, sans-serif"
+                  font-size="3.6" font-weight="700" letter-spacing="3">POLICE DEPARTMENT</text>
+          </svg>
+          <div class="lw-particles">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- Status bar iOS -->
+        <div class="ios-statusbar">
+          <span class="ios-net">
+            <i class="fa-sharp fa-solid fa-shield-halved"></i> LSPD-NET
+          </span>
+          <span class="ios-stat-right">
+            <i class="fa-sharp fa-solid fa-signal"></i>
+            <i class="fa-sharp fa-solid fa-wifi"></i>
+            <span class="ios-bat">
+              <span class="ios-bat-pct">100%</span>
+              <span class="ios-bat-icon"><span class="ios-bat-fill"></span></span>
+            </span>
+          </span>
+        </div>
+
+        <!-- Conteúdo principal — minimal Apple-style + police accent -->
+        <div class="ios-inner" id="lock-inner">
+
+          <!-- Top: identificação do agente (callsign · nome) -->
+          <div class="lk2-top">
+            <span class="lk2-id">
+              <span class="lk2-id-callsign" id="lock-callsign">—</span>
+              <span class="lk2-id-sep"></span>
+              <span class="lk2-id-name" id="lock-name">Agente</span>
+            </span>
+          </div>
+
+          <!-- Centro: relógio Apple-clean -->
+          <div class="lk2-clock">
+            <div class="lk2-date" id="lock-date">-</div>
+            <div class="lk2-time" id="lock-clock">--:--</div>
+            <div class="lk2-meta">
+              <span class="lk2-status-dot lk2-off" id="lock-status-dot"></span>
+              <span id="lock-status-label" data-i18n="lock.off_service">Inativo</span>
+              <span class="lk2-meta-sep">·</span>
+              <span id="lock-rank">—</span>
+            </div>
+          </div>
+
+          <!-- Notificações iOS-style -->
+          <div class="ios-notifs-wrap">
+            <div class="ios-notifs" id="lock-notifs">
+              <div class="ios-notif-empty">
+                <i class="fa-sharp fa-solid fa-bell-slash"></i>
+                <span data-i18n="lock.no_notifs">Sem notificações</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer: hint + home bar -->
+          <div class="ios-footer">
+            <div class="ios-welcome-sub" data-i18n="lock.tap_to_unlock">Toca ou desliza para cima para desbloquear</div>
+            <button class="ios-home-bar" id="lock-start"></button>
+          </div>
+
+          <!-- Compatibility (escondidos — referenciados por código antigo) -->
+          <div style="display:none">
+            <span id="lock-badge"></span>
+            <span id="lock-photo"></span>
+            <span id="lock-avatar"></span>
+            <span id="lock-agency"></span>
+            <span id="lk-st-officers"></span>
+            <span id="lk-st-dispatch"></span>
+            <span id="lk-st-bolos"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sessão activa (ocultada pela lock screen até Iniciar Sessão) -->
+      <div class="session" id="session">
+
+      <!-- Top App Bar -->
+      <div class="topbar">
+        <div class="tb-left">
+          <div class="tb-page-title" id="tb-app-title" data-i18n="dash.title">Painel</div>
+          <div class="tb-page-sub" id="tb-app-sub">Visão geral do sistema</div>
+        </div>
+
+        <div class="tb-center">
+          <div class="tb-search">
+            <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+            <input id="global-search" type="text" data-i18n-ph="topbar.search_placeholder" placeholder="Pesquisar cidadão, veículo, matrícula, ID..." />
+            <kbd>↵</kbd>
+          </div>
+        </div>
+
+        <div class="tb-right">
+          <div class="tb-clock">
+            <span id="clock">--:--</span>
+            <span class="tb-clock-sub"><span id="weekday">-</span> · <span id="date">-</span></span>
+          </div>
+          <span class="tb-divider"></span>
+          <div class="tb-status">
+            <span class="signal">
+              <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            </span>
+            <span class="battery"><span class="battery-fill"></span></span>
+            <span class="battery-pct">100%</span>
+          </div>
+          <button class="tb-bell" data-i18n-title="topbar.notifications" title="Notificações">
+            <i class="fa-sharp fa-solid fa-bell"></i>
+            <span class="tb-bell-badge" id="bell-count">0</span>
+          </button>
+          <button id="btn-logout" class="tb-logout" data-i18n-title="topbar.logout" title="Encerrar Sessão">
+            <i class="fa-sharp fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Layout principal -->
+      <div class="app-shell">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="agency-badge"><i class="fa-sharp fa-solid fa-shield-halved"></i></div>
+            <div class="agency-info">
+              <div class="agency-title" id="sb-agency">LSPD</div>
+              <div class="agency-sub" id="sb-agency-city">Los Angeles</div>
+            </div>
+          </div>
+
+          <nav class="sidebar-nav">
+            <!-- Operações -->
+            <div class="nav-section">
+              <span class="nav-section-label"><i class="fa-sharp fa-solid fa-radar"></i> <span data-i18n="nav.section.operations">Operações</span></span>
+            </div>
+            <button class="nav-item active nav-blue" data-app="dashboard">
+              <span class="ico"><i class="fa-sharp fa-solid fa-grid-2"></i></span>
+              <span class="lbl" data-i18n="nav.dashboard">Painel</span>
+            </button>
+            <button class="nav-item nav-cyan" data-app="livemap">
+              <span class="ico"><i class="fa-sharp fa-solid fa-map-location-dot"></i></span>
+              <span class="lbl" data-i18n="nav.livemap">Mapa Live</span>
+            </button>
+            <button class="nav-item nav-red" data-app="dispatch">
+              <span class="ico"><i class="fa-sharp fa-solid fa-tower-broadcast"></i></span>
+              <span class="lbl" data-i18n="nav.dispatch">Dispatch</span>
+              <span class="nav-badge" id="nav-dispatch-count" style="display:none">0</span>
+            </button>
+
+            <!-- Base de Dados -->
+            <div class="nav-section">
+              <span class="nav-section-label"><i class="fa-sharp fa-solid fa-database"></i> <span data-i18n="nav.section.database">Base de Dados</span></span>
+            </div>
+            <button class="nav-item nav-teal" data-app="citizens">
+              <span class="ico"><i class="fa-sharp fa-solid fa-id-card"></i></span>
+              <span class="lbl" data-i18n="nav.citizens">Cidadãos</span>
+            </button>
+            <button class="nav-item nav-orange" data-app="vehicles">
+              <span class="ico"><i class="fa-sharp fa-solid fa-car-side"></i></span>
+              <span class="lbl" data-i18n="nav.vehicles">Veículos</span>
+            </button>
+            <button class="nav-item nav-amber" data-app="properties">
+              <span class="ico"><i class="fa-sharp fa-solid fa-house-flag"></i></span>
+              <span class="lbl" data-i18n="nav.properties">Propriedades</span>
+            </button>
+
+            <!-- Investigação -->
+            <div class="nav-section">
+              <span class="nav-section-label"><i class="fa-sharp fa-solid fa-magnifying-glass"></i> <span data-i18n="nav.section.investigation">Investigação</span></span>
+            </div>
+            <button class="nav-item nav-red" data-app="bolos">
+              <span class="ico"><i class="fa-sharp fa-solid fa-triangle-exclamation"></i></span>
+              <span class="lbl" data-i18n="nav.bolos">BOLOs</span>
+            </button>
+            <button class="nav-item nav-purple" data-app="incidents">
+              <span class="ico"><i class="fa-sharp fa-solid fa-clipboard-list"></i></span>
+              <span class="lbl" data-i18n="nav.incidents">Ocorrências</span>
+            </button>
+            <button class="nav-item nav-red" data-app="warrants">
+              <span class="ico"><i class="fa-sharp fa-solid fa-scale-balanced"></i></span>
+              <span class="lbl" data-i18n="nav.warrants">Mandados</span>
+            </button>
+            <button class="nav-item nav-pink" data-app="reports">
+              <span class="ico"><i class="fa-sharp fa-solid fa-file-lines"></i></span>
+              <span class="lbl" data-i18n="nav.reports">Relatórios</span>
+            </button>
+            <button class="nav-item nav-amber" data-app="offences">
+              <span class="ico"><i class="fa-sharp fa-solid fa-gavel"></i></span>
+              <span class="lbl" data-i18n="nav.offences">Multas</span>
+            </button>
+
+            <!-- Equipa -->
+            <div class="nav-section">
+              <span class="nav-section-label"><i class="fa-sharp fa-solid fa-shield-halved"></i> <span data-i18n="nav.section.team">Equipa</span></span>
+            </div>
+            <button class="nav-item nav-cyan" data-app="units">
+              <span class="ico"><i class="fa-sharp fa-solid fa-users-rectangle"></i></span>
+              <span class="lbl" data-i18n="nav.units">Unidades</span>
+            </button>
+            <button class="nav-item nav-green" data-app="department">
+              <span class="ico"><i class="fa-sharp fa-solid fa-users"></i></span>
+              <span class="lbl" data-i18n="nav.department">Departamento</span>
+            </button>
+            <button class="nav-item nav-amber" data-app="bulletins">
+              <span class="ico"><i class="fa-sharp fa-solid fa-thumbtack"></i></span>
+              <span class="lbl" data-i18n="nav.bulletins">Bulletins</span>
+            </button>
+            <button class="nav-item nav-purple" data-app="logs">
+              <span class="ico"><i class="fa-sharp fa-solid fa-clock-rotate-left"></i></span>
+              <span class="lbl" data-i18n="nav.logs">Logs</span>
+            </button>
+
+            <!-- Separador + botão Definições -->
+            <div class="nav-divider"></div>
+            <button class="nav-item nav-settings" data-app="settings" type="button">
+              <span class="ico"><i class="fa-sharp fa-solid fa-gear"></i></span>
+              <span class="lbl" data-i18n="nav.settings">Definições</span>
+              <span class="nav-duty-pill" id="nav-duty-pill" data-i18n-title="nav.duty_status" title="Estado de serviço">
+                <span class="nav-duty-dot"></span>
+              </span>
+            </button>
+            <span class="nav-indicator" id="nav-indicator"></span>
+          </nav>
+
+        </aside>
+
+        <!-- Main content -->
+        <main class="content">
+
+          <!-- ============== DASHBOARD ============== -->
+          <section class="app" id="app-dashboard">
+            <!-- Watermark badge -->
+            <div class="dash-watermark"><i class="fa-sharp fa-solid fa-shield-halved"></i></div>
+
+            <header class="app-header dash-header">
+              <div>
+                <h1 data-i18n="dash.title">Painel Principal</h1>
+                <p class="muted" id="dash-welcome">-</p>
+              </div>
+              <div class="dash-shift-pill">
+                <span class="dot-pulse"></span>
+                <span data-i18n="dash.in_service">Em serviço</span>
+                <span class="dash-shift-time" id="dash-shift-time">00:00:00</span>
+              </div>
+            </header>
+
+            <!-- Stats Row -->
+            <div class="grid-stats">
+              <div class="stat stat-blue">
+                <div class="stat-icon"><i class="fa-sharp fa-solid fa-shield-halved"></i></div>
+                <div class="stat-meta">
+                  <div class="stat-label" data-i18n="dash.stats.officers">Polícias Ativos</div>
+                  <div class="stat-value" id="dash-officers" data-target="0">0</div>
+                  <div class="stat-trend trend-up"><i class="fa-sharp fa-solid fa-arrow-trend-up"></i> <span data-i18n="dash.stats.officers_now">em serviço agora</span></div>
+                </div>
+              </div>
+              <div class="stat stat-red">
+                <div class="stat-icon"><i class="fa-sharp fa-solid fa-triangle-exclamation"></i></div>
+                <div class="stat-meta">
+                  <div class="stat-label" data-i18n="dash.stats.bolos">BOLOs Ativos</div>
+                  <div class="stat-value" id="dash-bolos" data-target="0">0</div>
+                  <div class="stat-trend"><i class="fa-sharp fa-solid fa-bullhorn"></i> <span data-i18n="dash.stats.bolos_sub">alertas em vigor</span></div>
+                </div>
+              </div>
+              <div class="stat stat-orange">
+                <div class="stat-icon"><i class="fa-sharp fa-solid fa-receipt"></i></div>
+                <div class="stat-meta">
+                  <div class="stat-label" data-i18n="dash.stats.fines">Multas Pendentes</div>
+                  <div class="stat-value" id="dash-fines" data-target="0">0</div>
+                  <div class="stat-trend"><i class="fa-sharp fa-solid fa-clock"></i> <span data-i18n="dash.stats.fines_sub">por liquidar</span></div>
+                </div>
+              </div>
+              <div class="stat stat-green">
+                <div class="stat-icon"><i class="fa-sharp fa-solid fa-signal-bars"></i></div>
+                <div class="stat-meta">
+                  <div class="stat-label" data-i18n="dash.stats.system">Estado Sistema</div>
+                  <div class="stat-value sm" data-i18n="dash.stats.system_ok">Operacional</div>
+                  <div class="stat-trend trend-up"><i class="fa-sharp fa-solid fa-circle-check"></i> <span data-i18n="dash.stats.system_modules">todos os módulos</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Main 3-col grid -->
+            <div class="dash-grid">
+              <!-- Coluna esquerda -->
+              <div class="dash-col">
+                <!-- Atividade Recente (substitui Ações Rápidas) -->
+                <div class="card card-activity-feed">
+                  <div class="card-header">
+                    <h3><i class="fa-sharp fa-solid fa-rss"></i> <span data-i18n="dash.activity_recent">Atividade Recente</span></h3>
+                    <span class="online-dot-pill"><span class="online-dot"></span> <span data-i18n="common.live">live</span></span>
+                  </div>
+                  <div class="card-body" id="dash-activity-feed">
+                    <p class="muted pad" data-i18n="common.loading">A carregar...</p>
+                  </div>
+                </div>
+
+                <!-- Estado dos Agentes -->
+                <div class="card card-agent-status">
+                  <div class="card-header">
+                    <h3><i class="fa-sharp fa-solid fa-shield-halved"></i> <span data-i18n="dash.agent_status">Estado dos Agentes</span></h3>
+                    <span class="ps-counter" id="ps-counter">0</span>
+                  </div>
+                  <div class="card-body as-body" id="as-list">
+                    <p class="muted pad" data-i18n="common.loading">A carregar...</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Coluna direita -->
+              <div class="dash-col">
+                <div class="card card-chart">
+                  <div class="card-header">
+                    <h3><i class="fa-sharp fa-solid fa-chart-simple"></i> <span data-i18n="dash.chart_24h">Atividade 24h</span></h3>
+                    <span class="hdr-meta" data-i18n="dash.chart_24h_sub">últimas 24 horas · passa o cursor sobre as barras</span>
+                  </div>
+                  <div class="card-body">
+                    <div class="chart-stack-wrap">
+                      <svg id="chart-stack-svg" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+                    </div>
+                    <div class="chart-stack-legend">
+                      <div class="csl-item csl-records"><span class="csl-dot"></span> <span data-i18n="dash.chart.records">Antecedentes</span> <strong id="csl-records">0</strong></div>
+                      <div class="csl-item csl-bolos"><span class="csl-dot"></span> <span data-i18n="dash.chart.bolos">BOLOs</span> <strong id="csl-bolos">0</strong></div>
+                      <div class="csl-item csl-incidents"><span class="csl-dot"></span> <span data-i18n="dash.chart.incidents">Ocorrências</span> <strong id="csl-incidents">0</strong></div>
+                      <div class="csl-item csl-dispatches"><span class="csl-dot"></span> <span data-i18n="dash.chart.dispatches">Dispatches</span> <strong id="csl-dispatches">0</strong></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Mini Chat / Comunicações -->
+                <div class="card card-mini-chat">
+                  <div class="card-header">
+                    <h3><i class="fa-sharp fa-solid fa-comments"></i> <span data-i18n="dash.comms">Comunicações</span> <span class="hdr-count chan">#geral</span></h3>
+                    <span class="online-dot-pill"><span class="online-dot"></span> <span data-i18n="common.live">ao vivo</span></span>
+                  </div>
+                  <div class="card-body mini-chat-body" id="dash-chat">
+                    <p class="muted" data-i18n="common.loading">A carregar...</p>
+                  </div>
+
+                  <!-- Emoji picker (escondido por padrão) -->
+                  <div class="emoji-picker hidden" id="emoji-picker"></div>
+
+                  <div class="mini-chat-input">
+                    <button class="mci-btn" id="dash-chat-emoji" title="Emojis"><i class="fa-sharp fa-solid fa-face-smile"></i></button>
+                    <input id="dash-chat-input" type="text" data-i18n-ph="dash.chat_placeholder" placeholder="Escreve uma mensagem ou cola um link de imagem..." />
+                    <button class="mci-btn mci-send" id="dash-chat-send" data-i18n-title="common.send" title="Enviar"><i class="fa-sharp fa-solid fa-paper-plane"></i></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- ============== CIDADÃOS ============== -->
+          <section class="app hidden" id="app-citizens">
+
+            <!-- ===== Modo 1: Database Terminal ===== -->
+            <div id="cit-mode-db">
+              <!-- Terminal header (police database vibe) -->
+              <div class="cdb-terminal">
+                <div class="cdb-term-bar">
+                  <span class="cdb-term-dots">
+                    <span class="cdb-term-dot cdb-red"></span>
+                    <span class="cdb-term-dot cdb-amber"></span>
+                    <span class="cdb-term-dot cdb-green"></span>
+                  </span>
+                  <span class="cdb-term-title">
+                    <i class="fa-sharp fa-solid fa-shield-halved"></i>
+                    <span data-i18n="cit.terminal">LSPD CRIM-DB · TERMINAL</span> <span id="cdb-term-id">04</span>
+                  </span>
+                  <span class="cdb-term-status">
+                    <span class="cdb-term-status-dot"></span>
+                    <span data-i18n="cit.terminal_secure">SECURE · 256-BIT AES</span>
+                  </span>
+                </div>
+
+                <div class="cdb-term-body">
+                  <div class="cdb-term-prompt">
+                    <span class="cdb-prompt-arrow">▸</span>
+                    <span class="cdb-prompt-label" data-i18n="cit.query">QUERY:</span>
+                    <input id="citizen-search" type="text"
+                           data-i18n-ph="cit.search_placeholder"
+                           placeholder="Nome do sujeito ou ID do jogador..." autocomplete="off" />
+                    <button id="citizen-search-btn" class="cdb-prompt-btn">
+                      <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                      <span data-i18n="common.search">Pesquisar</span>
+                      <kbd>↵</kbd>
+                    </button>
+                  </div>
+                  <div class="cdb-term-hint">
+                    <i class="fa-sharp fa-solid fa-circle-info"></i>
+                    <span data-i18n-html="cit.search_hint">Mínimo <strong>2 caracteres</strong> · Aceita ID numérico do jogador · Acesso registado</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Estado IDLE -->
+              <div id="cit-state-idle" class="cit-state cit-idle">
+                <div class="cit-idle-radar">
+                  <span class="cit-radar-ring"></span>
+                  <span class="cit-radar-ring"></span>
+                  <span class="cit-radar-ring"></span>
+                  <i class="fa-sharp fa-solid fa-shield-halved"></i>
+                </div>
+                <h3 data-i18n="cit.idle.title">Aguardando consulta</h3>
+                <p data-i18n="cit.idle.body">Insere o nome do sujeito ou ID do jogador para iniciar a pesquisa na base de dados criminal.</p>
+                <div class="cit-idle-stats">
+                  <div class="cit-idle-stat">
+                    <span class="cit-idle-stat-val" id="cit-idle-online">0</span>
+                    <span class="cit-idle-stat-lab" data-i18n="cit.idle.online">Cidadãos online</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Estado SEARCHING -->
+              <div id="cit-state-searching" class="cit-state cit-searching hidden">
+                <div class="cit-scanner" id="cit-scanner">
+                  <!-- Linhas geradas dinamicamente -->
+                </div>
+                <div class="cit-search-progress">
+                  <div class="cit-search-bar"><div class="cit-search-fill" id="cit-search-fill"></div></div>
+                  <div class="cit-search-pct" id="cit-search-pct">0%</div>
+                </div>
+              </div>
+
+              <!-- Estado RESULTS -->
+              <div id="cit-state-results" class="cit-state cit-results hidden">
+                <div class="cit-results-header">
+                  <span class="cit-results-icon"><i class="fa-sharp fa-solid fa-check-double"></i></span>
+                  <span class="cit-results-label" data-i18n="cit.results.label">RESULTADOS DA QUERY</span>
+                  <span class="cit-results-count"><strong id="citizen-result-count">0</strong> <span data-i18n="cit.results.subjects">sujeitos</span></span>
+                  <span class="cit-results-time" id="cit-results-time">— ms</span>
+                </div>
+                <div class="cit-results-grid" id="citizen-list"></div>
+              </div>
+            </div>
+
+            <!-- ===== Modo 2: Documento do Sujeito (in-place) ===== -->
+            <div id="cit-mode-doc" class="hidden"></div>
+          </section>
+
+          <!-- ============== VEÍCULOS ============== -->
+          <section class="app hidden" id="app-vehicles">
+            <header class="app-header">
+              <h1 data-i18n="veh.title">Consulta de Veículos</h1>
+              <p class="muted" data-i18n="veh.subtitle">Sistema de identificação de matrículas · DMV</p>
+            </header>
+
+            <div class="plate-scanner">
+              <div class="ps-grid"></div>
+              <div class="ps-content">
+                <div class="ps-label">
+                  <i class="fa-sharp fa-solid fa-bolt"></i>
+                  <span data-i18n="veh.scanner_label">SCANNER DE MATRÍCULA</span>
+                </div>
+                <div class="ps-input-row">
+                  <div class="ps-plate">
+                    <span class="ps-plate-tag">LSPD</span>
+                    <input id="vehicle-search" type="text" data-i18n-ph="veh.placeholder" placeholder="INSIRA A MATRÍCULA" maxlength="14" autocomplete="off" />
+                  </div>
+                  <button id="vehicle-search-btn" class="ps-scan-btn">
+                    <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                    <span data-i18n="veh.button">Pesquisar</span>
+                  </button>
+                </div>
+                <div class="ps-hint">
+                  <i class="fa-sharp fa-solid fa-circle-info"></i>
+                  <span data-i18n="veh.hint">Aceita qualquer formato de matrícula — Enter para pesquisar</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Estado IDLE -->
+            <div id="vh-state-idle" class="vh-state vh-idle">
+              <div class="vh-idle-radar">
+                <span class="vh-radar-ring"></span>
+                <span class="vh-radar-ring"></span>
+                <span class="vh-radar-ring"></span>
+                <i class="fa-sharp fa-solid fa-car-side"></i>
+              </div>
+              <h3 data-i18n="veh.idle.title">Aguardando consulta</h3>
+              <p data-i18n="veh.idle.body">Insere uma matrícula no scanner acima para iniciar a pesquisa na base de dados do DMV.</p>
+            </div>
+
+            <!-- Estado SEARCHING -->
+            <div id="vh-state-searching" class="vh-state vh-searching hidden">
+              <div class="cit-scanner" id="vh-scanner"></div>
+              <div class="cit-search-progress">
+                <div class="cit-search-bar"><div class="cit-search-fill" id="vh-search-fill"></div></div>
+                <div class="cit-search-pct" id="vh-search-pct">0%</div>
+              </div>
+            </div>
+
+            <!-- Estado RESULTS -->
+            <div id="vh-state-results" class="vh-state vh-results hidden">
+              <div class="cit-results-header">
+                <span class="cit-results-icon"><i class="fa-sharp fa-solid fa-check-double"></i></span>
+                <span class="cit-results-label" data-i18n="veh.results.label">RESULTADO DA QUERY</span>
+                <span class="cit-results-count"><strong id="vehicle-result-count">0</strong> <span data-i18n="veh.results.count">veículos</span></span>
+                <span class="cit-results-time" id="vh-results-time">— ms</span>
+              </div>
+              <div class="vehicle-results" id="vehicle-results"></div>
+            </div>
+          </section>
+
+          <!-- ============== PROPRIEDADES ============== -->
+          <section class="app hidden" id="app-properties">
+
+            <!-- ===== MODO 1: GRID (listagem) ===== -->
+            <div id="prop-mode-grid">
+              <header class="app-header prop-header">
+                <div>
+                  <h1 data-i18n="prop.title">Registo de Propriedades</h1>
+                  <p class="muted" data-i18n="prop.subtitle">Moradas suspeitas · Esconderijos · Investigações em curso</p>
+                </div>
+                <div class="header-actions">
+                  <span class="prop-count-pill" id="prop-count-pill">
+                    <i class="fa-sharp fa-solid fa-house-flag"></i>
+                    <strong id="prop-active-count">0</strong> <span data-i18n="prop.records">registos</span>
+                  </span>
+                  <button id="btn-prop-gallery" class="btn btn-ghost">
+                    <i class="fa-sharp fa-solid fa-images"></i> <span data-i18n="prop.gallery">Galeria</span>
+                  </button>
+                  <button id="btn-new-property" class="btn btn-warning"><i class="fa-sharp fa-solid fa-plus"></i> <span data-i18n="prop.new">Registar Morada</span></button>
+                </div>
+              </header>
+
+              <div class="db-search prop-search">
+                <div class="db-grid"></div>
+                <div class="db-content">
+                  <div class="db-label">
+                    <i class="fa-sharp fa-solid fa-magnifying-glass-location"></i>
+                    <span data-i18n="prop.search_label">FICHEIRO DE MORADAS</span>
+                    <span class="db-status">
+                      <span class="db-status-dot"></span> <span data-i18n="prop.search_status">CRIPTOGRAFADO</span>
+                    </span>
+                  </div>
+                  <div class="db-input-row">
+                    <div class="db-input-wrap">
+                      <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                      <input id="property-search" type="text" data-i18n-ph="prop.search_placeholder" placeholder="Pesquisar morada, zona, tag ou suspeito..." autocomplete="off" />
+                      <span class="db-input-tag" data-i18n="prop.tag">PROP-DB</span>
+                    </div>
+                  </div>
+                  <div class="db-hint">
+                    <i class="fa-sharp fa-solid fa-circle-info"></i>
+                    <span data-i18n="prop.search_hint">Filtra a lista por morada, zona, tag (#trafico) ou nome de suspeito</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Filtros por estado -->
+              <div class="prop-filters" id="prop-filters">
+                <button class="prop-filter active" data-filter="all"><i class="fa-sharp fa-solid fa-grip"></i> <span data-i18n="common.all">All</span></button>
+              </div>
+
+              <div class="properties-grid" id="properties-grid">
+                <div class="prop-grid-empty">
+                  <i class="fa-sharp fa-solid fa-house-flag"></i>
+                  <h3 data-i18n="prop.empty.title">Sem propriedades registadas</h3>
+                  <p data-i18n="prop.empty.body">Cria a primeira morada suspeita para começares a investigar.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ===== MODO 2: DOCUMENTO ABERTO (in-place) ===== -->
+            <div id="prop-mode-doc" class="hidden"></div>
+
+            <!-- ===== MODO 3: GALERIA GLOBAL ===== -->
+            <div id="prop-mode-gallery" class="hidden"></div>
+
+          </section>
+
+          <!-- ============== BOLOs ============== -->
+          <section class="app hidden" id="app-bolos">
+            <header class="app-header bolo-header">
+              <div>
+                <h1 data-i18n="bolo.title">BOLOs em Vigor</h1>
+                <p class="muted" data-i18n="bolo.subtitle">Be On the Look Out — Alertas distribuídos a todas as unidades</p>
+              </div>
+              <div class="header-actions">
+                <span class="bolo-count-pill" id="bolo-count-pill">
+                  <i class="fa-sharp fa-solid fa-bullhorn"></i>
+                  <strong id="bolo-active-count">0</strong> <span data-i18n="bolo.active">ativos</span>
+                </span>
+                <button id="btn-new-bolo" class="btn btn-danger"><i class="fa-sharp fa-solid fa-plus"></i> <span data-i18n="bolo.new">Emitir BOLO</span></button>
+              </div>
+            </header>
+
+            <div class="bolos-grid" id="bolos-grid">
+              <div class="bolo-empty">
+                <i class="fa-sharp fa-solid fa-bullhorn"></i>
+                <h3 data-i18n="bolo.empty.title">Nenhum BOLO ativo</h3>
+                <p data-i18n="bolo.empty.body">Quando uma unidade emitir um alerta, aparecerá aqui.</p>
+              </div>
+            </div>
+          </section>
+
+
+          <!-- ============== RELATÓRIOS ============== -->
+          <section class="app hidden" id="app-reports">
+            <header class="app-header">
+              <h1 data-i18n="rep.title">Arquivo de Relatórios</h1>
+              <p class="muted" data-i18n="rep.subtitle">Boletins de ocorrência e relatórios de serviço</p>
+              <div class="header-actions">
+                <button id="btn-new-report" class="btn btn-primary"><i class="fa-sharp fa-solid fa-file-pen"></i> <span data-i18n="rep.new">Novo Relatório</span></button>
+              </div>
+            </header>
+
+            <!-- Filtros por categoria (chips) -->
+            <div class="reports-filters" id="reports-filters">
+              <button class="rep-filter active" data-filter="all"><i class="fa-sharp fa-solid fa-folder-open"></i> <span data-i18n="common.all">All</span></button>
+            </div>
+
+            <div class="reports-list" id="reports-list">
+              <div class="reports-empty">
+                <i class="fa-sharp fa-solid fa-folder-open"></i>
+                <h3 data-i18n="rep.empty.title">Arquivo vazio</h3>
+                <p data-i18n="rep.empty.body">Cria o primeiro relatório de serviço.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============== MANDADOS / WARRANTS ============== -->
+          <section class="app hidden" id="app-warrants">
+            <header class="app-header wnt-header">
+              <div>
+                <h1 data-i18n="wnt.title">Mandados em Vigor</h1>
+                <p class="muted" data-i18n="wnt.subtitle">Capturas · Buscas · Comparências — distribuídos a todas as unidades</p>
+              </div>
+              <div class="header-actions">
+                <span class="wnt-count-pill" id="wnt-count-pill">
+                  <i class="fa-sharp fa-solid fa-scale-balanced"></i>
+                  <strong id="wnt-active-count">0</strong> <span data-i18n="wnt.active">activos</span>
+                </span>
+                <button id="btn-new-warrant" class="btn btn-danger"><i class="fa-sharp fa-solid fa-plus"></i> <span data-i18n="wnt.new">Emitir Mandado</span></button>
+              </div>
+            </header>
+
+            <div class="db-search wnt-search">
+              <div class="db-grid"></div>
+              <div class="db-content">
+                <div class="db-label">
+                  <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                  <span data-i18n="wnt.search_label">PESQUISA DE MANDADOS</span>
+                  <span class="db-status">
+                    <span class="db-status-dot"></span> <span data-i18n="prop.search_status">CRIPTOGRAFADO</span>
+                  </span>
+                </div>
+                <div class="db-input-row">
+                  <div class="db-input-wrap">
+                    <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                    <input id="warrant-search" type="text" data-i18n-ph="wnt.search_placeholder" placeholder="Procurar por nome do sujeito ou crime..." autocomplete="off" />
+                    <span class="db-input-tag" data-i18n="wnt.tag">WARRANT</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Filtros por status / tipo -->
+            <div class="wnt-filters" id="wnt-filters">
+              <button class="wnt-filter active" data-filter="all"><i class="fa-sharp fa-solid fa-grip"></i> <span data-i18n="common.all">All</span></button>
+            </div>
+
+            <div class="wnt-grid" id="wnt-list">
+              <p class="muted pad" data-i18n="wnt.empty">A carregar mandados...</p>
+            </div>
+          </section>
+
+          <!-- ============== UNIDADES / UNITS ============== -->
+          <section class="app hidden" id="app-units">
+            <header class="app-header un-header">
+              <div>
+                <h1 data-i18n="un.title">Unidades Táticas</h1>
+                <p class="muted" data-i18n="un.subtitle">Equipas em serviço · Estado em tempo real · Comando &amp; controlo</p>
+              </div>
+              <div class="header-actions">
+                <span class="un-count-pill" id="un-count-pill">
+                  <i class="fa-sharp fa-solid fa-users-rectangle"></i>
+                  <strong id="un-active-count">0</strong> <span data-i18n="un.count">unidades</span>
+                </span>
+                <button id="btn-new-unit" class="btn btn-primary"><i class="fa-sharp fa-solid fa-plus"></i> <span data-i18n="un.new">Nova Unidade</span></button>
+              </div>
+            </header>
+
+            <!-- Filtros por status -->
+            <div class="un-filters" id="un-filters">
+              <button class="un-filter active" data-filter="all"><i class="fa-sharp fa-solid fa-grip"></i> <span data-i18n="common.all">All</span></button>
+            </div>
+
+            <div class="un-layout">
+              <div class="un-grid" id="un-list">
+                <p class="muted pad" data-i18n="un.empty">A carregar unidades...</p>
+              </div>
+
+              <aside class="un-roster">
+                <header class="un-roster-head">
+                  <i class="fa-sharp fa-solid fa-users-line"></i>
+                  <h3 data-i18n="un.roster">Agentes Online</h3>
+                  <span class="un-roster-cnt" id="un-roster-cnt">0</span>
+                </header>
+                <p class="un-roster-hint">
+                  <i class="fa-sharp fa-solid fa-arrows-up-down-left-right"></i>
+                  <span data-i18n="un.roster_hint">Arrasta um agente para uma unidade para o adicionar. Arrasta um membro para esta lista para o remover.</span>
+                </p>
+                <div class="un-roster-list" id="un-roster-list">
+                  <p class="muted pad" style="text-align:center;font-size:11.5px" data-i18n="un.no_online">Sem agentes online.</p>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <!-- ============== MULTAS / OFFENCES ============== -->
+          <section class="app hidden" id="app-offences">
+            <header class="app-header off-header">
+              <div>
+                <h1 data-i18n="off.title">Catálogo de Multas</h1>
+                <p class="muted" data-i18n="off.subtitle">Lista de infracções e valores associados — editável in-game</p>
+              </div>
+              <div class="header-actions">
+                <span class="off-count-pill" id="off-count-pill">
+                  <i class="fa-sharp fa-solid fa-gavel"></i>
+                  <strong id="off-active-count">0</strong> <span data-i18n="off.active">activas</span>
+                </span>
+                <button id="btn-new-offence" class="btn btn-warning"><i class="fa-sharp fa-solid fa-plus"></i> <span data-i18n="off.new">Nova Multa</span></button>
+              </div>
+            </header>
+
+            <div class="db-search off-search">
+              <div class="db-grid"></div>
+              <div class="db-content">
+                <div class="db-label">
+                  <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                  <span data-i18n="off.search_label">PESQUISA DE MULTAS</span>
+                  <span class="db-status">
+                    <span class="db-status-dot"></span> <span data-i18n="prop.search_status">CRIPTOGRAFADO</span>
+                  </span>
+                </div>
+                <div class="db-input-row">
+                  <div class="db-input-wrap">
+                    <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                    <input id="offence-search" type="text" data-i18n-ph="off.search_placeholder" placeholder="Procurar por nome, código ou descrição..." autocomplete="off" />
+                    <span class="db-input-tag" data-i18n="off.tag">CODE</span>
+                  </div>
+                </div>
+                <div class="db-hint">
+                  <i class="fa-sharp fa-solid fa-circle-info"></i>
+                  <span data-i18n="off.search_hint">Pesquisa instantânea em todas as categorias</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Filtros por categoria -->
+            <div class="off-filters" id="off-filters">
+              <button class="off-filter active" data-filter="all"><i class="fa-sharp fa-solid fa-grip"></i> <span data-i18n="common.all">All</span></button>
+            </div>
+
+            <div class="off-list" id="off-list">
+              <p class="muted pad" data-i18n="off.empty">A carregar catálogo...</p>
+            </div>
+          </section>
+
+          <!-- ============== OCORRÊNCIAS ============== -->
+          <section class="app hidden" id="app-incidents">
+            <header class="app-header inc-header">
+              <div>
+                <h1 data-i18n="inc.title">Registo de Ocorrências</h1>
+                <p class="muted" data-i18n="inc.subtitle">Casos abertos · Investigações · Apreensões</p>
+              </div>
+              <div class="header-actions">
+                <span class="inc-count-pill" id="inc-count-pill">
+                  <i class="fa-sharp fa-solid fa-clipboard-list"></i>
+                  <strong id="inc-active-count">0</strong> <span data-i18n="inc.count">casos</span>
+                </span>
+                <button id="btn-new-incident" class="btn btn-primary"><i class="fa-sharp fa-solid fa-folder-plus"></i> <span data-i18n="inc.new">Abrir Caso</span></button>
+              </div>
+            </header>
+
+            <!-- Filtros por tipo -->
+            <div class="inc-filters" id="inc-filters">
+              <button class="inc-filter active" data-filter="all"><i class="fa-sharp fa-solid fa-grip"></i> <span data-i18n="common.all">All</span></button>
+            </div>
+
+            <div class="incidents-grid" id="incidents-list">
+              <div class="inc-empty">
+                <i class="fa-sharp fa-solid fa-clipboard-list"></i>
+                <h3 data-i18n="inc.empty.title">Sem casos registados</h3>
+                <p data-i18n="inc.empty.body">Cria a primeira ocorrência para começar a registar.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============== MAPA LIVE ============== -->
+          <section class="app hidden" id="app-livemap">
+            <div class="map-shell">
+              <div class="map-canvas" id="map-canvas">
+                <div class="map-frame" id="map-frame">
+                  <img class="map-img" id="map-img" alt="GTA V Map" />
+                  <div class="map-markers" id="map-markers"></div>
+                </div>
+                <div class="map-overlay">
+                  <div class="map-overlay-stats">
+                    <div class="map-stat"><i class="fa-sharp fa-solid fa-shield-halved"></i> <strong id="map-st-online">0</strong> <span data-i18n="live.online">Online</span></div>
+                    <div class="map-stat"><i class="fa-sharp fa-solid fa-car-side"></i> <strong id="map-st-veh">0</strong> <span data-i18n="live.in_vehicle">Em viatura</span></div>
+                    <div class="map-stat"><i class="fa-sharp fa-solid fa-person-walking"></i> <strong id="map-st-foot">0</strong> <span data-i18n="live.on_foot">A pé</span></div>
+                  </div>
+                </div>
+                <button class="map-zoom-reset hidden" id="map-zoom-reset" data-i18n-title="live.zoom_reset_title" title="Voltar ao normal">
+                  <i class="fa-sharp fa-solid fa-arrows-to-circle"></i>
+                  <span data-i18n="live.zoom_reset">Reset</span>
+                </button>
+
+                <!-- Calibrar mapa: utilidade para alinhar a posição do marker -->
+                <button class="map-calibrate" id="map-calibrate" data-i18n-title="live.calibrate" title="Calibrar posição do mapa">
+                  <i class="fa-sharp fa-solid fa-crosshairs"></i>
+                  <span data-i18n="live.calibrate">Calibrar</span>
+                </button>
+
+                <!-- Banner de calibração ativa -->
+                <div class="map-cal-banner hidden" id="map-cal-banner">
+                  <i class="fa-sharp fa-solid fa-crosshairs"></i>
+                  <span data-i18n-html="live.calibrate.point1"><strong>Ponto 1 / 2:</strong> Clica no mapa onde estás <strong>agora</strong></span>
+                  <button id="map-cal-cancel" class="map-cal-cancel"><i class="fa-sharp fa-solid fa-xmark"></i></button>
+                </div>
+              </div>
+              <aside class="map-side">
+                <div class="card map-card-officers">
+                  <div class="card-header"><h3><i class="fa-sharp fa-solid fa-users"></i> <span data-i18n="live.officers">Polícias Online</span></h3></div>
+                  <div class="card-body" id="map-list">
+                    <p class="muted" data-i18n="live.no_officers">Sem polícias online.</p>
+                  </div>
+                </div>
+                <div class="map-legend">
+                  <div><span class="lg-dot lg-blue-light"></span> <span data-i18n="live.legend.foot">A pé</span></div>
+                  <div><span class="lg-dot lg-blue-dark"></span> <span data-i18n="live.legend.vehicle">Em viatura</span></div>
+                  <div><span class="lg-dot lg-red"></span> <span data-i18n="live.legend.you">Tu</span></div>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <!-- ============== DISPATCH (CAD-style) ============== -->
+          <section class="app hidden" id="app-dispatch">
+            <div class="dispatch-cad">
+
+              <!-- Mapa (com HUDs sobrepostos) -->
+              <div class="map-canvas dispatch-canvas" id="dispatch-canvas">
+                <div class="map-frame" id="dispatch-frame">
+                  <img class="map-img" id="dispatch-img" alt="GTA V Map" />
+                  <div class="map-markers" id="dispatch-markers"></div>
+                </div>
+                <button class="map-zoom-reset hidden" id="dispatch-zoom-reset" data-i18n-title="live.zoom_reset_title" title="Voltar ao normal">
+                  <i class="fa-sharp fa-solid fa-arrows-to-circle"></i>
+                  <span data-i18n="live.zoom_reset">Reset</span>
+                </button>
+
+                <!-- HUD topo: estado do CAD + estatísticas (overlay sobre o mapa) -->
+                <div class="cad-topbar">
+                  <div class="cad-tb-left">
+                    <span class="cad-tb-led"></span>
+                    <span class="cad-tb-tag" data-i18n="disp.cad.tag">CAD-LSPD</span>
+                    <span class="cad-tb-status" data-i18n="disp.cad.status">ONLINE</span>
+                  </div>
+                  <div class="cad-tb-mid">
+                    <div class="cad-tb-stat">
+                      <span class="cad-tb-stat-lab" data-i18n="disp.cad.active">ATIVOS</span>
+                      <strong id="dispatch-count">0</strong>
+                    </div>
+                    <div class="cad-tb-stat priority">
+                      <span class="cad-tb-stat-lab" data-i18n="disp.cad.high">ALTA</span>
+                      <strong id="dispatch-count-high">0</strong>
+                    </div>
+                  </div>
+                  <div class="cad-tb-right">
+                    <i class="fa-sharp fa-solid fa-satellite-dish"></i>
+                    <span class="cad-tb-rt-lab" data-i18n="disp.cad.radio">RÁDIO</span>
+                    <span class="cad-tb-rt-bars"><span></span><span></span><span></span><span></span></span>
+                  </div>
+                </div>
+
+                <!-- Legenda flutuante no canto inferior-esquerdo do mapa -->
+                <div class="cad-legend">
+                  <div><span class="lg-dot lg-red"></span> <span data-i18n="disp.legend.high">Alta</span></div>
+                  <div><span class="lg-dot lg-amber"></span> <span data-i18n="disp.legend.medium">Média</span></div>
+                  <div><span class="lg-dot lg-grey"></span> <span data-i18n="disp.legend.low">Baixa</span></div>
+                </div>
+              </div>
+
+              <!-- Painel táctico (segunda coluna do grid) -->
+              <div class="cad-panel" id="cad-panel">
+                <header class="cad-panel-head">
+                  <span class="cad-panel-title" data-i18n="disp.cad.calls">CHAMADAS ATIVAS</span>
+                  <span class="cad-panel-count" id="cad-panel-count">0</span>
+                </header>
+
+                <div class="cad-panel-body">
+                  <div class="cad-list" id="dispatch-list">
+                    <div class="cad-empty">
+                      <i class="fa-sharp fa-solid fa-circle-check"></i>
+                      <span data-i18n="disp.empty.title">SEM CHAMADAS PENDENTES</span>
+                      <small data-i18n="disp.empty.body">O sistema está em standby</small>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Footer: Quick Dispatch (pílulas de texto) -->
+                <footer class="cad-panel-foot">
+                  <div class="cad-foot-label">
+                    <span class="cad-foot-led"></span>
+                    <i class="fa-sharp fa-solid fa-walkie-talkie"></i>
+                    <span data-i18n="disp.emit_code">EMITIR CÓDIGO</span>
+                  </div>
+                  <div class="cad-quick-grid" id="dispatch-quick-grid">
+                    <p class="muted dq-empty" data-i18n="disp.loading_codes">A carregar códigos...</p>
+                  </div>
+                </footer>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- ============== DEPARTAMENTO ============== -->
+          <section class="app hidden" id="app-department">
+            <header class="app-header">
+              <h1 data-i18n="dept.title">Departamento</h1>
+              <p class="muted" data-i18n="dept.subtitle">Lista de agentes online</p>
+            </header>
+
+            <div class="dept-grid" id="dept-grid">
+              <p class="muted pad" data-i18n="dept.empty">A carregar...</p>
+            </div>
+          </section>
+
+          <!-- ============== BULLETIN BOARD ============== -->
+          <section class="app hidden" id="app-bulletins">
+            <header class="app-header bb-header">
+              <div>
+                <h1 data-i18n="bb.title">Bulletin Board</h1>
+                <p class="muted" data-i18n="bb.subtitle">Avisos do departamento · Comunicações internas · Reuniões</p>
+              </div>
+              <div class="header-actions">
+                <span class="bb-count-pill"><i class="fa-sharp fa-solid fa-thumbtack"></i> <strong id="bb-active-count">0</strong> <span data-i18n="bb.count">mensagens</span></span>
+                <button id="btn-new-bulletin" class="btn btn-primary"><i class="fa-sharp fa-solid fa-plus"></i> <span data-i18n="bb.new">Nova mensagem</span></button>
+              </div>
+            </header>
+
+            <div class="bb-layout">
+              <aside class="bb-list-pane">
+                <div class="bb-search">
+                  <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                  <input id="bb-search" type="text" data-i18n-ph="bb.search_placeholder" placeholder="Pesquisar avisos..." />
+                </div>
+                <div class="bb-list" id="bb-list">
+                  <p class="muted pad" style="text-align:center;font-size:11.5px" data-i18n="bb.empty">A carregar...</p>
+                </div>
+              </aside>
+
+              <main class="bb-detail" id="bb-detail">
+                <div class="bb-detail-empty">
+                  <i class="fa-sharp fa-solid fa-clipboard-list"></i>
+                  <h3 data-i18n="bb.detail.empty.title">Sem mensagem seleccionada</h3>
+                  <p data-i18n="bb.detail.empty.body">Escolhe um aviso à esquerda para o ler aqui.</p>
+                </div>
+              </main>
+            </div>
+          </section>
+
+          <!-- ============== LOGS DE AUDITORIA ============== -->
+          <section class="app hidden" id="app-logs">
+            <header class="app-header lg-header">
+              <div>
+                <h1 data-i18n="lg.title">Logs de Auditoria</h1>
+                <p class="muted" data-i18n="lg.subtitle">Histórico completo de acções no MDT — quem, quando, em quê</p>
+              </div>
+              <div class="header-actions">
+                <span class="lg-count-pill"><i class="fa-sharp fa-solid fa-clock-rotate-left"></i> <strong id="lg-count">0</strong> <span data-i18n="lg.count">registos</span></span>
+                <button id="btn-refresh-logs" class="btn btn-ghost btn-sm"><i class="fa-sharp fa-solid fa-rotate"></i> <span data-i18n="lg.refresh">Atualizar</span></button>
+              </div>
+            </header>
+
+            <div class="lg-filters">
+              <div class="lg-filter-input">
+                <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+                <input id="lg-q" type="text" data-i18n-ph="lg.search_placeholder" placeholder="Pesquisar por agente, alvo ou detalhes..." />
+              </div>
+              <select id="lg-action" class="mdt-select">
+                <option value="" data-i18n="lg.action.all">Todas as acções</option>
+                <option value="create" data-i18n="lg.action.create">Criar</option>
+                <option value="update" data-i18n="lg.action.update">Editar</option>
+                <option value="delete" data-i18n="lg.action.delete">Eliminar</option>
+                <option value="status_change" data-i18n="lg.action.status_change">Mudar estado</option>
+                <option value="photo_add" data-i18n="lg.action.photo_add">Adicionar foto</option>
+                <option value="photo_delete" data-i18n="lg.action.photo_delete">Eliminar foto</option>
+                <option value="execute" data-i18n="lg.action.execute">Executar mandado</option>
+                <option value="cancel" data-i18n="lg.action.cancel">Anular mandado</option>
+                <option value="pin" data-i18n="lg.action.pin">Fixar bulletin</option>
+                <option value="unpin" data-i18n="lg.action.unpin">Desfixar bulletin</option>
+                <option value="unit_add_member" data-i18n="lg.action.unit_add_member">Adicionar membro</option>
+                <option value="unit_remove_member" data-i18n="lg.action.unit_remove_member">Remover membro</option>
+                <option value="unit_set_leader" data-i18n="lg.action.unit_set_leader">Definir líder</option>
+                <option value="unit_set_status" data-i18n="lg.action.unit_set_status">Estado da unidade</option>
+              </select>
+              <select id="lg-target" class="mdt-select">
+                <option value="" data-i18n="lg.target.all">Todos os tipos</option>
+                <option value="bolo" data-i18n="lg.target.bolo">BOLOs</option>
+                <option value="property" data-i18n="lg.target.property">Propriedades</option>
+                <option value="incident" data-i18n="lg.target.incident">Ocorrências</option>
+                <option value="warrant" data-i18n="lg.target.warrant">Mandados</option>
+                <option value="unit" data-i18n="lg.target.unit">Unidades</option>
+                <option value="report" data-i18n="lg.target.report">Relatórios</option>
+                <option value="record" data-i18n="lg.target.record">Antecedentes</option>
+                <option value="bulletin" data-i18n="lg.target.bulletin">Bulletins</option>
+              </select>
+            </div>
+
+            <div class="lg-table" id="lg-list">
+              <p class="muted pad" data-i18n="lg.empty">A carregar...</p>
+            </div>
+          </section>
+
+          <!-- ============== DEFINIÇÕES ============== -->
+          <section class="app hidden" id="app-settings">
+            <header class="app-header set-header">
+              <div>
+                <h1 data-i18n="set.title">Definições</h1>
+                <p class="muted" data-i18n="set.subtitle">Conta · Preferências · Sistema</p>
+              </div>
+              <div class="header-actions">
+                <span class="set-badge"><i class="fa-sharp fa-solid fa-id-badge"></i> <span id="set-meta-name">—</span></span>
+              </div>
+            </header>
+
+            <div class="set-layout">
+              <main class="set-pane">
+                <!-- Account -->
+                <section class="set-section" data-set-pane="account">
+                  <div class="set-card set-profile">
+                    <div class="set-profile-av" id="set-profile-av"></div>
+                    <div class="set-profile-info">
+                      <h2 id="set-profile-name">—</h2>
+                      <p class="set-profile-grade" id="set-profile-grade">—</p>
+                      <p class="set-profile-id"><i class="fa-sharp fa-solid fa-fingerprint"></i> <span id="set-profile-callsign">—</span></p>
+                    </div>
+                    <div class="set-profile-stats">
+                      <div class="set-stat">
+                        <span class="set-stat-num" id="set-stat-shift">--:--:--</span>
+                        <span class="set-stat-lbl" data-i18n="set.profile.shift">Em serviço</span>
+                      </div>
+                      <div class="set-stat">
+                        <span class="set-stat-num" id="set-stat-units">0</span>
+                        <span class="set-stat-lbl" data-i18n="set.profile.units">Unidades</span>
+                      </div>
+                      <div class="set-stat">
+                        <span class="set-stat-num" id="set-stat-online">0</span>
+                        <span class="set-stat-lbl" data-i18n="set.profile.online">Agentes</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="set-card">
+                    <div class="set-card-head">
+                      <i class="fa-sharp fa-solid fa-power-off"></i>
+                      <h3 data-i18n="set.duty.title">Estado de serviço</h3>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-title" data-i18n="set.duty.row.title">Em serviço</span>
+                        <span class="set-row-sub" id="set-duty-sub" data-i18n="set.duty.off">Recebes dispatches e apareces no mapa em tempo real.</span>
+                      </div>
+                      <button class="set-switch" id="set-duty-switch" type="button" role="switch" aria-checked="false">
+                        <span class="set-switch-thumb"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="set-card">
+                    <div class="set-card-head">
+                      <i class="fa-sharp fa-solid fa-radio"></i>
+                      <h3 data-i18n="set.callsign.title">Call-sign</h3>
+                    </div>
+                    <div class="set-row set-row-stack">
+                      <div class="set-row-info">
+                        <span class="set-row-title" data-i18n="set.callsign.row.title">Identificador rádio</span>
+                        <span class="set-row-sub" data-i18n="set.callsign.row.sub">Usado no dispatch e no live map. Máx. 12 caracteres.</span>
+                      </div>
+                      <div class="set-cs-input">
+                        <input id="set-callsign-input" type="text" maxlength="12" data-i18n-ph="set.callsign.placeholder" placeholder="Ex: LSP-04" />
+                        <button class="btn btn-primary btn-sm" id="set-callsign-save"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="common.save">Guardar</span></button>
+                      </div>
+                    </div>
+                  </div>
+
+                </section>
+
+                <!-- Notificações -->
+                <section class="set-section" data-set-pane="notifs">
+                  <div class="set-card">
+                    <div class="set-card-head">
+                      <i class="fa-sharp fa-solid fa-tower-broadcast"></i>
+                      <h3 data-i18n="set.dispatch.title">Dispatch</h3>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-title" data-i18n="set.dispatch.overlay">Overlay in-game</span>
+                        <span class="set-row-sub" data-i18n="set.dispatch.overlay.sub">Notificações que aparecem no canto superior direito do ecrã quando há um dispatch novo.</span>
+                      </div>
+                      <button class="set-switch" data-pref="dispatchOverlay" type="button" role="switch"><span class="set-switch-thumb"></span></button>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-title" data-i18n="set.dispatch.duration">Duração do overlay</span>
+                        <span class="set-row-sub" data-i18n="set.dispatch.duration.sub">Tempo que cada alerta in-game fica visível.</span>
+                      </div>
+                      <select class="mdt-select" data-pref="dispatchDuration" style="max-width:170px">
+                        <option value="5" data-i18n="set.dispatch.dur.5">5 segundos</option>
+                        <option value="8" data-i18n="set.dispatch.dur.8">8 segundos</option>
+                        <option value="12" data-i18n="set.dispatch.dur.12">12 segundos</option>
+                        <option value="20" data-i18n="set.dispatch.dur.20">20 segundos</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="set-card">
+                    <div class="set-card-head">
+                      <i class="fa-sharp fa-solid fa-bell"></i>
+                      <h3 data-i18n="set.lockscreen.title">Lock screen</h3>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-title" data-i18n="set.lock.notifs">Mostrar notificações no ecrã de bloqueio</span>
+                        <span class="set-row-sub" data-i18n="set.lock.notifs.sub">Dispatches, BOLOs e ocorrências recentes.</span>
+                      </div>
+                      <button class="set-switch" data-pref="lockNotifs" type="button" role="switch"><span class="set-switch-thumb"></span></button>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-title" data-i18n="set.lock.reset">Repor notificações descartadas</span>
+                        <span class="set-row-sub" data-i18n="set.lock.reset.sub">Volta a mostrar tudo o que foi removido por swipe.</span>
+                      </div>
+                      <button class="btn btn-ghost btn-sm" id="set-clear-dismissed"><i class="fa-sharp fa-solid fa-rotate-left"></i> <span data-i18n="set.lock.reset.btn">Repor</span></button>
+                    </div>
+                  </div>
+                </section>
+
+              </main>
+            </div>
+          </section>
+
+        </main>
+      </div>
+      </div><!-- /.session -->
+    </div>
+  </div>
+
+  <!-- ============== MODAIS ============== -->
+  <div class="modal hidden" id="modal-bolo">
+    <div class="modal-box modal-lg type-red">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-bullhorn"></i></span>
+          <div>
+            <h2 data-i18n="bolo.modal.new">Criar BOLO</h2>
+            <p class="modal-sub" data-i18n="bolo.modal.subtitle">Emite alerta para todos os agentes ativos</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="bolo.modal.section1">01 · Identificação</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="bolo.field.title">Título do alerta</span>
+              <input id="bolo-title" type="text" data-i18n-ph="bolo.field.title_ph" placeholder="Ex: Bank robbery suspect" />
+            </label>
+            <label><span data-i18n="bolo.field.priority">Prioridade</span>
+              <select id="bolo-priority" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="bolo.field.target">Alvo (nome ou matrícula)</span>
+              <input id="bolo-target" type="text" data-i18n-ph="bolo.field.target_ph" placeholder="Ex: João Silva ou AB-12-CD" />
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="bolo.modal.section2">02 · Descrição</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="bolo.field.description">Descrição completa</span>
+              <textarea id="bolo-description" rows="5" data-i18n-ph="bolo.field.description_ph" placeholder="Descreve aspecto, vestuário, comportamento, último local visto, perigosidade..."></textarea>
+            </label>
+            <label class="full"><span data-i18n="bolo.field.image">URL imagem (opcional)</span>
+              <input id="bolo-image" type="text" placeholder="https://..." />
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="bolo.modal.section3">03 · Foto (opcional)</span></div>
+          <p class="modal-section-desc" data-i18n="bolo.photo.subtitle">Captura uma fotografia de evidência directamente do jogo. Substitui a imagem do BOLO existente.</p>
+          <div class="bolo-photo-row">
+            <button type="button" class="btn btn-ghost btn-sm" id="bolo-capture-btn">
+              <i class="fa-sharp fa-solid fa-camera"></i> <span data-i18n="bolo.photo.capture">Capturar foto</span>
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm hidden" id="bolo-clear-photo">
+              <i class="fa-sharp fa-solid fa-trash"></i> <span data-i18n="bolo.photo.remove">Remover</span>
+            </button>
+          </div>
+          <div class="bolo-photo-preview hidden" id="bolo-photo-preview">
+            <img id="bolo-photo-img" alt="" />
+            <span class="bolo-photo-tag" data-i18n="bolo.photo.pending">PENDENTE</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-danger" id="bolo-submit"><i class="fa-sharp fa-solid fa-bullhorn"></i> <span data-i18n="bolo.action.submit">Emitir BOLO</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== BULLETIN — Criar/Editar ============== -->
+  <div class="modal hidden" id="modal-bulletin">
+    <div class="modal-box modal-lg type-amber">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-thumbtack"></i></span>
+          <div>
+            <h2 id="bulletin-modal-title" data-i18n="bb.modal.new">Novo Aviso</h2>
+            <p class="modal-sub" data-i18n="bb.modal.subtitle">Comunicação interna do departamento</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="form-grid">
+            <label class="full"><span data-i18n="bb.field.title">Título</span>
+              <input id="bulletin-title" type="text" maxlength="180" data-i18n-ph="bb.field.title_ph" placeholder="Ex: Reunião extraordinária — 12h00" />
+            </label>
+            <label class="full"><span data-i18n="bb.field.body">Mensagem</span>
+              <textarea id="bulletin-body" rows="8" data-i18n-ph="bb.field.body_ph" placeholder="Conteúdo do aviso..."></textarea>
+            </label>
+            <label class="bb-pin-row">
+              <input id="bulletin-pinned" type="checkbox" />
+              <span><i class="fa-sharp fa-solid fa-thumbtack"></i> <span data-i18n="bb.field.pinned">Fixar no topo</span></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="bulletin-delete" type="button"><i class="fa-sharp fa-solid fa-trash"></i> <span data-i18n="common.delete">Eliminar</span></button>
+        <div class="modal-footer-spacer"></div>
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-primary" id="bulletin-submit"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="common.publish">Publicar</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-incident">
+    <div class="modal-box modal-xl type-purple">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-clipboard-list"></i></span>
+          <div>
+            <h2 data-i18n="inc.modal.new">Nova Ocorrência</h2>
+            <p class="modal-sub" data-i18n="inc.modal.subtitle">Registo formal de incidente policial</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="inc.modal.section1">01 · Detalhes</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="inc.field.title">Título</span>
+              <input id="incident-title" type="text" data-i18n-ph="inc.field.title_ph" placeholder="Ex: Weapon seizure in Vespucci" />
+            </label>
+            <label><span data-i18n="inc.field.type">Tipo de ocorrência</span>
+              <select id="incident-type" class="mdt-select">
+                <option value="apreensao" data-i18n="inc.type.apreensao">Apreensão</option>
+                <option value="investigacao" data-i18n="inc.type.investigacao">Investigação</option>
+                <option value="detencao" data-i18n="inc.type.detencao">Detenção</option>
+                <option value="acidente" data-i18n="inc.type.acidente">Acidente</option>
+                <option value="vigilancia" data-i18n="inc.type.vigilancia">Vigilância</option>
+                <option value="outros" data-i18n="inc.type.outros">Outros</option>
+              </select>
+            </label>
+            <label><span data-i18n="inc.field.location">Local</span>
+              <div class="prop-coord-row inc-loc-row">
+                <input id="incident-location" type="text" data-i18n-ph="inc.field.location_ph" placeholder="Ex: Vespucci Beach" />
+                <button type="button" id="incident-use-location" class="btn btn-ghost btn-sm" data-i18n-title="prop.use_my_location">
+                  <i class="fa-sharp fa-solid fa-location-crosshairs"></i> <span data-i18n="inc.action.use_location">Aqui</span>
+                </button>
+              </div>
+            </label>
+            <label class="full"><span data-i18n="inc.field.suspects">Suspeito(s) / Envolvido(s)</span>
+              <input id="incident-suspects" type="text" data-i18n-ph="inc.field.suspects_ph" placeholder="Names or IDs separated by comma" />
+            </label>
+            <label class="full"><span data-i18n="inc.field.description">Descrição da ocorrência</span>
+              <textarea id="incident-description" rows="5" data-i18n-ph="inc.field.description_ph" placeholder="Descreve a ocorrência, ações tomadas, evidências recolhidas..."></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-section" id="incident-weapons-section">
+          <div class="modal-section-title">
+            <span data-i18n="inc.modal.section2">02 · Armas apreendidas</span>
+            <span class="modal-section-hint" data-i18n="inc.modal.section2_hint">Clica para selecionar</span>
+          </div>
+          <div class="weapon-grid" id="weapon-grid">
+            <p class="muted pad" data-i18n="inc.weapons.empty">A carregar arsenal...</p>
+          </div>
+          <div class="weapon-selected" id="weapon-selected"></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">
+            <span data-i18n="inc.modal.section3">03 · Galeria de Provas (Cena)</span>
+            <span class="modal-section-hint" id="incident-gallery-count">0 / 12</span>
+          </div>
+          <div class="prop-gallery-toolbar">
+            <button type="button" id="incident-camera-btn" class="btn btn-primary btn-sm">
+              <i class="fa-sharp fa-solid fa-camera"></i> <span data-i18n="prop.gallery.capture">Capturar</span>
+            </button>
+            <span class="prop-gallery-hint">
+              <i class="fa-sharp fa-solid fa-circle-info"></i>
+              <span data-i18n="inc.gallery.hint">Para novas ocorrências, as fotos são anexadas ao guardar.</span>
+            </span>
+          </div>
+          <div id="incident-gallery" class="prop-gallery">
+            <div class="prop-gallery-empty">
+              <i class="fa-sharp fa-solid fa-camera-retro"></i>
+              <span data-i18n-html="inc.gallery.empty">No photo evidence. Click <strong>Capture</strong> to record.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-primary" id="incident-submit"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="inc.action.submit">Registar Ocorrência</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-record">
+    <div class="modal-box type-red">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-handcuffs"></i></span>
+          <div>
+            <h2 data-i18n="rec.modal.title">Adicionar Antecedente</h2>
+            <p class="modal-sub" data-i18n="rec.modal.subtitle">Registo criminal no perfil do cidadão</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="rec.modal.section">Crime e penalização</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="rec.field.crime">Tipo de crime</span>
+              <select id="record-crime" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="rec.field.fine">Multa (€)</span><input id="record-fine" type="number" min="0" /></label>
+            <label><span data-i18n="rec.field.jail">Prisão (minutos)</span><input id="record-jail" type="number" min="0" /></label>
+            <label class="full"><span data-i18n="rec.field.notes">Observações do agente</span>
+              <textarea id="record-notes" rows="4" data-i18n-ph="rec.field.notes_ph" placeholder="Notas adicionais sobre as circunstâncias..."></textarea>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-danger" id="record-submit"><i class="fa-sharp fa-solid fa-gavel"></i> <span data-i18n="rec.action.submit">Adicionar Antecedente</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-fine">
+    <div class="modal-box type-amber">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-receipt"></i></span>
+          <div>
+            <h2 data-i18n="fine.modal.title">Aplicar Multa</h2>
+            <p class="modal-sub" data-i18n="fine.modal.subtitle">Sanção monetária ao cidadão</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="fine.modal.section">Detalhes da multa</span></div>
+          <div class="form-grid">
+            <label><span data-i18n="fine.field.amount">Valor (€)</span><input id="cz-fine-amount" type="number" min="1" data-i18n-ph="fine.field.amount_ph" placeholder="Ex: 250" /></label>
+            <label class="full"><span data-i18n="fine.field.reason">Motivo</span><input id="cz-fine-reason" type="text" data-i18n-ph="fine.field.reason_ph" placeholder="Ex: Excesso de velocidade em zona urbana" /></label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-warning" id="cz-fine-submit"><i class="fa-sharp fa-solid fa-money-bill"></i> <span data-i18n="fine.action.submit">Emitir Multa</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-report">
+    <div class="modal-box modal-lg type-pink">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-file-pen"></i></span>
+          <div>
+            <h2 data-i18n="rep.modal.new">Novo Relatório</h2>
+            <p class="modal-sub" data-i18n="rep.modal.subtitle">Boletim de serviço</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="rep.modal.section1">01 · Identificação</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="rep.field.title">Título do relatório</span>
+              <input id="report-title" type="text" data-i18n-ph="rep.field.title_ph" placeholder="Ex: Patrulha noturna em Mirror Park" />
+            </label>
+            <label><span data-i18n="rep.field.category">Categoria</span>
+              <select id="report-category" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="rep.field.involved">Envolvidos</span>
+              <input id="report-involved" type="text" data-i18n-ph="rep.field.involved_ph" placeholder="Separados por vírgula" />
+            </label>
+          </div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="rep.modal.section2">02 · Conteúdo</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="rep.field.content">Descrição completa</span>
+              <textarea id="report-content" rows="9" data-i18n-ph="rep.field.content_ph" placeholder="Cronologia dos eventos, ações, observações..."></textarea>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-primary" id="report-submit"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="common.save">Guardar Relatório</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-property">
+    <div class="modal-box modal-lg type-amber">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-house-flag"></i></span>
+          <div>
+            <h2 id="property-modal-title" data-i18n="prop.modal.new">Nova Propriedade</h2>
+            <p class="modal-sub" data-i18n="prop.modal.subtitle">Regista uma morada suspeita para investigação</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="common.location">01 · Localização</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="prop.field.address">Morada / Endereço</span>
+              <input id="property-address" type="text" placeholder="Ex: 4521 Strawberry Ave" maxlength="200" />
+            </label>
+            <label><span data-i18n="prop.field.district">Zona / Bairro</span>
+              <input id="property-district" type="text" placeholder="Ex: Davis" maxlength="80" />
+            </label>
+            <label><span data-i18n="prop.field.type">Tipo</span>
+              <select id="property-type" class="mdt-select"></select>
+            </label>
+            <label class="full"><span data-i18n="prop.field.gps">Coordenadas GPS (opcional)</span>
+              <div class="prop-coord-row">
+                <input id="property-gps-x" type="number" step="0.01" placeholder="X" />
+                <input id="property-gps-y" type="number" step="0.01" placeholder="Y" />
+                <button type="button" id="property-use-coords" class="btn btn-ghost btn-sm" data-i18n-title="prop.use_my_location">
+                  <i class="fa-sharp fa-solid fa-location-crosshairs"></i> <span data-i18n="inc.action.use_location">Aqui</span>
+                </button>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="nav.section.investigation">02 · Investigação</span></div>
+          <div class="form-grid">
+            <label><span data-i18n="prop.field.status">Estado</span>
+              <select id="property-status" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="prop.field.suspects">Suspeitos / Ligações</span>
+              <input id="property-suspects" type="text" placeholder="Names/IDs · names/IDs" maxlength="500" />
+            </label>
+            <label class="full"><span data-i18n="prop.field.tags">Tags</span>
+              <div class="prop-tags-input" id="property-tags-input">
+                <div class="prop-tags-chips" id="property-tags-chips"></div>
+                <input id="property-tags-field" type="text" placeholder="tag + Enter" />
+              </div>
+              <div class="prop-tags-suggestions" id="property-tags-suggestions"></div>
+            </label>
+            <label class="full"><span data-i18n="prop.field.notes">Observações / Notas do agente</span>
+              <textarea id="property-description" rows="5" placeholder="..."></textarea>
+            </label>
+            <input id="property-image" type="hidden" />
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">
+            <span data-i18n="prop.gallery.title">03 · Galeria de Fotos</span>
+            <span class="modal-section-hint" id="property-gallery-count">0 / 12</span>
+          </div>
+          <div class="prop-gallery-toolbar">
+            <button type="button" id="property-camera-btn" class="btn btn-warning btn-sm">
+              <i class="fa-sharp fa-solid fa-camera"></i> <span data-i18n="prop.gallery.capture">Capturar</span>
+            </button>
+            <span class="prop-gallery-hint">
+              <i class="fa-sharp fa-solid fa-circle-info"></i>
+              <span data-i18n="inc.gallery.hint">Para novas propriedades, as fotos são anexadas ao guardar.</span>
+            </span>
+          </div>
+          <div id="property-gallery" class="prop-gallery">
+            <div class="prop-gallery-empty">
+              <i class="fa-sharp fa-solid fa-camera-retro"></i>
+              <span data-i18n="prop.gallery.empty">Nenhuma foto. Clica Capturar para tirar uma.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-warning" id="property-submit"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="common.save">Guardar</span></button>
+      </div>
+    </div>
+  </div>
+
+<!-- modal-settings removido — Definições é agora uma página completa em #app-settings -->
+
+  <!-- ============== MANDADO — Criar/Editar ============== -->
+  <div class="modal hidden" id="modal-warrant">
+    <div class="modal-box modal-lg type-red">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-scale-balanced"></i></span>
+          <div>
+            <h2 id="warrant-modal-title" data-i18n="wnt.modal.new">Emitir Mandado</h2>
+            <p class="modal-sub" data-i18n="wnt.modal.subtitle">Documento legal para captura, busca ou comparência</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="wnt.field.citizen">01 · Sujeito</span></div>
+          <div class="form-grid">
+            <label class="full"><span data-i18n="cit.search_placeholder">Pesquisar cidadão (nome ou ID)</span>
+              <div class="prop-coord-row inc-loc-row">
+                <input id="warrant-citizen-search" type="text" data-i18n-ph="cit.search_placeholder" placeholder="Ex: João Silva ou 23" autocomplete="off" />
+                <button type="button" id="warrant-citizen-search-btn" class="btn btn-ghost btn-sm">
+                  <i class="fa-sharp fa-solid fa-magnifying-glass"></i> <span data-i18n="common.search">Procurar</span>
+                </button>
+              </div>
+              <div id="warrant-citizen-results" class="wnt-cit-results hidden"></div>
+            </label>
+            <label class="full"><span data-i18n="wnt.field.citizen">Sujeito selecionado</span>
+              <div id="warrant-citizen-selected" class="wnt-cit-selected">
+                <i class="fa-sharp fa-solid fa-user-magnifying-glass"></i>
+                <span class="muted" data-i18n="cit.scan.no_match">Nenhum sujeito selecionado</span>
+              </div>
+              <input id="warrant-citizen-id"   type="hidden" />
+              <input id="warrant-citizen-name" type="hidden" />
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="common.details">02 · Detalhes</span></div>
+          <div class="form-grid">
+            <label><span data-i18n="wnt.field.type">Tipo</span>
+              <select id="warrant-type" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="wnt.field.reward">Recompensa (€)</span>
+              <input id="warrant-reward" type="number" min="0" max="1000000" step="100" placeholder="Ex: 5000" />
+            </label>
+            <label><span data-i18n="wnt.field.expires">Expira em (horas, opcional)</span>
+              <input id="warrant-expires" type="number" min="0" max="8760" placeholder="Ex: 168" />
+            </label>
+            <label class="full"><span data-i18n="wnt.field.charges">Acusações (uma por linha)</span>
+              <textarea id="warrant-charges" rows="3" placeholder="..."></textarea>
+            </label>
+            <label class="full"><span data-i18n="wnt.field.description">Descrição / Sinais particulares</span>
+              <textarea id="warrant-description" rows="3" placeholder="..."></textarea>
+            </label>
+            <label class="full"><span data-i18n="bolo.field.image">URL imagem (opcional)</span>
+              <input id="warrant-image" type="text" placeholder="https://..." maxlength="500" />
+            </label>
+            <label class="full"><span data-i18n="common.notes">Observações internas</span>
+              <textarea id="warrant-notes" rows="2" placeholder="..."></textarea>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-danger" id="warrant-submit"><i class="fa-sharp fa-solid fa-stamp"></i> <span data-i18n="wnt.new">Emitir Mandado</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== UNIDADE — Criar/Editar ============== -->
+  <div class="modal hidden" id="modal-unit">
+    <div class="modal-box modal-lg type-blue">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-users-rectangle"></i></span>
+          <div>
+            <h2 id="unit-modal-title" data-i18n="un.modal.new">Nova Unidade</h2>
+            <p class="modal-sub" data-i18n="un.subtitle">Equipa tática em serviço</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="bolo.modal.section1">01 · Identificação</span></div>
+          <div class="form-grid">
+            <label><span data-i18n="un.field.callsign">Callsign</span>
+              <input id="unit-callsign" type="text" placeholder="Ex: ALPHA-1" maxlength="40" />
+            </label>
+            <label><span data-i18n="un.field.type">Tipo</span>
+              <select id="unit-type" class="mdt-select"></select>
+            </label>
+            <label class="full"><span data-i18n="un.field.name">Nome da unidade</span>
+              <input id="unit-name" type="text" data-i18n-ph="un.field.name_ph" placeholder="Ex: Patrol Alpha 1" maxlength="80" />
+            </label>
+            <label class="full"><span data-i18n="un.field.notes">Notas (opcional)</span>
+              <textarea id="unit-notes" rows="2" placeholder="..." maxlength="200"></textarea>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-ghost hidden" id="unit-delete"><i class="fa-sharp fa-solid fa-trash"></i> <span data-i18n="common.delete">Eliminar</span></button>
+        <button class="btn btn-primary" id="unit-submit"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="common.save">Guardar</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== UNIDADE — Adicionar Membro ============== -->
+  <div class="modal hidden" id="modal-unit-member">
+    <div class="modal-box modal-lg type-blue">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-user-plus"></i></span>
+          <div>
+            <h2 data-i18n="common.add">Adicionar Membro</h2>
+            <p class="modal-sub" id="unit-member-target" data-i18n="un.roster_hint">Selecciona um agente online para juntar à unidade</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div id="unit-member-list" class="un-member-pick-list">
+          <p class="muted pad" data-i18n="common.loading">A carregar agentes...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.close">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== MULTA — Criar/Editar ============== -->
+  <div class="modal hidden" id="modal-offence">
+    <div class="modal-box modal-lg type-amber">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-gavel"></i></span>
+          <div>
+            <h2 id="offence-modal-title" data-i18n="off.modal.new">Nova Multa</h2>
+            <p class="modal-sub" data-i18n="off.modal.subtitle">Define a infracção, o valor e a severidade</p>
+          </div>
+        </div>
+        <button class="btn-icon" data-close-modal><i class="fa-sharp fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="bolo.modal.section1">01 · Identificação</span></div>
+          <div class="form-grid">
+            <label><span data-i18n="off.field.category">Categoria</span>
+              <select id="offence-category" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="off.field.severity">Severidade</span>
+              <select id="offence-severity" class="mdt-select"></select>
+            </label>
+            <label><span data-i18n="off.field.code">Código</span>
+              <input id="offence-code" type="text" data-i18n-ph="off.field.code_ph" placeholder="Ex: T-010" maxlength="40" />
+            </label>
+            <label class="full"><span data-i18n="off.field.name">Nome da infracção</span>
+              <input id="offence-name" type="text" placeholder="..." maxlength="180" />
+            </label>
+            <label class="full"><span data-i18n="off.field.description">Descrição</span>
+              <textarea id="offence-description" rows="3" placeholder="..." maxlength="400"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title"><span data-i18n="off.modal.section2">02 · Penalização</span></div>
+          <div class="form-grid">
+            <label><span data-i18n="off.field.fine">Valor (€)</span><input id="offence-fine" type="number" min="0" max="1000000" step="50" data-i18n-ph="off.field.fine_ph" placeholder="Ex: 500" /></label>
+            <label><span data-i18n="off.field.jail">Prisão (min)</span><input id="offence-jail" type="number" min="0" max="10000" step="5" data-i18n-ph="off.field.jail_ph" placeholder="Ex: 30" /></label>
+            <label class="full off-active-row">
+              <span class="off-active-toggle">
+                <input id="offence-active" type="checkbox" checked />
+                <span class="off-toggle-track"><span class="off-toggle-thumb"></span></span>
+                <span class="off-active-label" data-i18n="off.active.label">Multa activa (visível no catálogo de selecção)</span>
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-ghost hidden" id="offence-delete"><i class="fa-sharp fa-solid fa-trash"></i> <span data-i18n="common.delete">Eliminar</span></button>
+        <button class="btn btn-warning" id="offence-submit"><i class="fa-sharp fa-solid fa-floppy-disk"></i> <span data-i18n="common.save">Guardar</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-confirm">
+    <div class="modal-box modal-sm type-red">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon"><i class="fa-sharp fa-solid fa-circle-exclamation"></i></span>
+          <div>
+            <h2 id="confirm-title" data-i18n="common.confirm">Confirmar</h2>
+            <p class="modal-sub" data-i18n="common.confirm_delete">Esta ação é irreversível</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-text" data-i18n="common.confirm_delete">Tens a certeza?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal data-i18n="common.cancel">Cancelar</button>
+        <button class="btn btn-danger" id="confirm-yes"><i class="fa-sharp fa-solid fa-check"></i> <span data-i18n="common.confirm">Confirmar</span></button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Lightbox de fotografias -->
+<div id="photo-lightbox" class="photo-lightbox hidden">
+  <button class="photo-lightbox-close" id="photo-lightbox-close" title="Fechar">
+    <i class="fa-sharp fa-solid fa-xmark"></i>
+  </button>
+  <img id="photo-lightbox-img" alt="Fotografia" />
+</div>
+
+<!-- Presentation-only fit-to-viewport scaler. Computes the scale that
+     "contains" the 1620x980 MDT canvas inside the current viewport and
+     publishes it as the --mdt-scale CSS var the override block consumes.
+     Recomputed on load + resize. Does NOT touch boot/data/bridge. -->
+<script id="mdt-preview-scaler">
+  (function () {
+    'use strict';
+    var BASE_W = 1620, BASE_H = 980;
+    var GRAD = 'radial-gradient(120% 120% at 50% 0%, #14161c 0%, #0a0b0f 55%, #050507 100%)';
+    function fit() {
+      var scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+      // Never upscale past 1:1 (keeps text crisp); only shrink to contain.
+      if (scale > 1) scale = 1;
+      document.documentElement.style.setProperty('--mdt-scale', String(scale));
+    }
+    // css/style.css declares `html, body { background: transparent !important }`.
+    // An INLINE !important wins over any stylesheet, so we paint the backdrop
+    // straight onto html/body here — covers the moment before #root is shown.
+    function paintBackdrop() {
+      document.documentElement.style.setProperty('background', GRAD, 'important');
+      if (document.body) document.body.style.setProperty('background', GRAD, 'important');
+    }
+    // Recompute after the viewport has actually settled. Entering/leaving
+    // fullscreen (or a container resize) doesn't always report final
+    // innerWidth/innerHeight on the first event tick, so re-measure on the
+    // next two animation frames as well.
+    function refit() {
+      fit();
+      requestAnimationFrame(function () {
+        fit();
+        requestAnimationFrame(fit);
+      });
+    }
+    fit();
+    paintBackdrop();
+    window.addEventListener('resize', refit, { passive: true });
+    // Fullscreen is driven by the website's "Fullscreen" button (the iframe
+    // goes fullscreen). The SAME min(innerW/BASE,innerH/BASE) logic then fits
+    // to the screen size — we just need to recompute when it toggles.
+    document.addEventListener('fullscreenchange', refit);
+    document.addEventListener('webkitfullscreenchange', refit);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', refit, { passive: true });
+    }
+    window.addEventListener('load', function () { refit(); paintBackdrop(); });
+    document.addEventListener('DOMContentLoaded', function () { refit(); paintBackdrop(); });
+    [200, 600, 1200, 2500].forEach(function (t) { setTimeout(paintBackdrop, t); });
+  })();
+</script>
+
+<!-- Plain, un-obfuscated open-source app (external; CSP-safe, no eval). -->
+<script src="js/app.js"></script>
+
+<!-- Website demo bridge: stubs every NUI fetch with mock data and posts the
+     boot {action:'open'} message. MUST be the last element so app.js has
+     loaded and attached its window 'message' listener first. -->
+<script src="js/demo-bridge.js"></script>
+</body>
+</html>

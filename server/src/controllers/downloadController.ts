@@ -4,6 +4,35 @@ import { UserModel } from '../models/user.js';
 import fs from 'fs';
 import path from 'path';
 
+// Resolve once at boot; downloads must live somewhere under this directory.
+// Throwing here is intentional — if DOWNLOADS_PATH is not set, the download
+// system cannot operate safely.
+function getDownloadsRoot(): string {
+  const root = process.env.DOWNLOADS_PATH;
+  if (!root) {
+    throw new Error('DOWNLOADS_PATH is not configured');
+  }
+  return path.resolve(root);
+}
+
+// Returns the canonical absolute path if `filePath` resolves *inside* the
+// downloads root, otherwise null. Defends against `..`, absolute paths, and
+// symlink-style escapes by comparing canonical paths with a separator-aware
+// prefix check (prevents `/var/downloads2` matching `/var/downloads`).
+function resolveSafeDownloadPath(filePath: string): string | null {
+  const root = getDownloadsRoot();
+  const candidate = path.resolve(root, filePath);
+  const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+  if (candidate !== root && !candidate.startsWith(rootWithSep)) {
+    return null;
+  }
+  return candidate;
+}
+
+// Reject filenames that could break Content-Disposition or contain path
+// separators (the filename is what users see, never used for filesystem access).
+const SAFE_FILENAME_RE = /^[A-Za-z0-9._\- ()\[\]]{1,200}$/;
+
 export class DownloadController {
   // Admin: Criar novo token de download
   static async createToken(req: Request, res: Response) {
@@ -18,8 +47,22 @@ export class DownloadController {
         return res.status(400).json({ error: 'Max downloads must be at least 1' });
       }
 
-      // Verificar se o ficheiro existe
-      const fullPath = path.resolve(filePath);
+      if (typeof filePath !== 'string' || typeof fileName !== 'string') {
+        return res.status(400).json({ error: 'filePath and fileName must be strings' });
+      }
+
+      if (!SAFE_FILENAME_RE.test(fileName)) {
+        return res.status(400).json({ error: 'fileName contains invalid characters' });
+      }
+
+      // Constrain the file to the configured downloads directory. Without this
+      // check, an admin (or a compromised admin account) could create a token
+      // pointing at any file the Node process can read — including .env, SSH
+      // keys, or system files.
+      const fullPath = resolveSafeDownloadPath(filePath);
+      if (!fullPath) {
+        return res.status(400).json({ error: 'filePath must be inside the downloads directory' });
+      }
       if (!fs.existsSync(fullPath)) {
         return res.status(404).json({ error: 'File not found on server' });
       }
@@ -417,8 +460,17 @@ export class DownloadController {
         // Allow resume if download was previously started (has last_download_at)
       }
 
+      // Defense in depth: refuse to serve any token whose stored path is
+      // outside the configured downloads root. Protects against historical
+      // tokens that may have been created before path validation existed.
+      const safePath = resolveSafeDownloadPath(downloadToken.file_path);
+      if (!safePath) {
+        console.error('Refusing to serve out-of-tree download path:', downloadToken.file_path);
+        return res.status(404).send('File not found');
+      }
+
       // Verificar se o ficheiro existe
-      if (!fs.existsSync(downloadToken.file_path)) {
+      if (!fs.existsSync(safePath)) {
         return res.status(404).send(`
           <!DOCTYPE html>
           <html>
@@ -447,7 +499,7 @@ export class DownloadController {
       }
 
       // Servir o ficheiro com suporte a Range requests (para resumable downloads)
-      const stat = fs.statSync(downloadToken.file_path);
+      const stat = fs.statSync(safePath);
       const fileSize = stat.size;
       const range = req.headers.range;
 
@@ -457,8 +509,8 @@ export class DownloadController {
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
         const chunksize = (end - start) + 1;
-        
-        const fileStream = fs.createReadStream(downloadToken.file_path, { start, end });
+
+        const fileStream = fs.createReadStream(safePath, { start, end });
         
         res.writeHead(206, {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
@@ -485,7 +537,7 @@ export class DownloadController {
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('X-Downloads-Remaining', downloadToken.remaining_downloads.toString());
 
-        const fileStream = fs.createReadStream(downloadToken.file_path);
+        const fileStream = fs.createReadStream(safePath);
         fileStream.pipe(res);
 
         fileStream.on('error', (error) => {

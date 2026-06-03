@@ -69,7 +69,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         <div className="h-[260px] sm:h-[300px] flex items-center justify-center">
           <div className="flex items-center gap-2 text-gray-500">
             <Activity className="w-4 h-4 animate-pulse" />
-            <span className="text-sm animate-pulse">Loading chart...</span>
+            <span className="text-sm animate-pulse">A carregar gráfico...</span>
           </div>
         </div>
       </div>
@@ -84,7 +84,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           <div className="w-12 h-12 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-center">
             <Activity className="w-5 h-5 text-gray-600" />
           </div>
-          <p className="text-sm text-gray-500">No data available</p>
+          <p className="text-sm text-gray-500">Sem dados disponíveis</p>
         </div>
       </div>
     );
@@ -123,9 +123,9 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       {/* Quick stats row */}
       <div className="grid grid-cols-3 gap-2 mb-4 sm:mb-5">
-        <Stat label="Total" value={total.toLocaleString()} accent={color} />
-        <Stat label="Average" value={avg.toLocaleString()} />
-        <Stat label="Peak" value={max.toLocaleString()} />
+        <Stat label="Total" value={total.toLocaleString('pt-PT')} accent={color} hint="Soma de todos os dias do período." />
+        <Stat label="Média/dia" value={avg.toLocaleString('pt-PT')} hint="Valor médio diário no período selecionado." />
+        <Stat label="Pico" value={max.toLocaleString('pt-PT')} hint="Dia com o valor mais alto no período." />
       </div>
 
       {/* Chart */}
@@ -170,7 +170,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             }}
             labelStyle={{ color: '#a1a1aa', fontSize: '11px', fontWeight: 600, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
             itemStyle={{ color: '#fff', fontSize: '13px', padding: 0 }}
-            formatter={(value: number) => [value.toLocaleString(), title]}
+            formatter={(value) => [Number(value ?? 0).toLocaleString('pt-PT'), title]}
           />
 
           <Area
@@ -193,9 +193,19 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 };
 
 // Internal stat tile
-function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+function Stat({
+  label,
+  value,
+  accent,
+  hint,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+  hint?: string;
+}) {
   return (
-    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-2.5">
+    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-2.5" title={hint}>
       <p className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold mb-0.5">{label}</p>
       <p
         className="text-sm sm:text-base font-bold truncate"

@@ -1,75 +1,89 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Check, Flame } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, Flame, Sparkles, Star, Tag as TagIcon, Zap, Package as PackageIcon } from 'lucide-react';
 import { Package } from '../types';
 import { useTebex } from '../context/TebexContext';
-import { formatCategoryName } from '../utils/helpers';
+import { useCurrency } from '../context/CurrencyContext';
 import { API_URL } from '../config/api';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { usePackageTags } from '../context/PackageTagsContext';
+import { findTagForPackage, getTagStyles } from '../services/packageTagsService';
+import { isBundle, isSubscriptionPackage, isVanguard } from '../utils/isBundle';
+import { basePackageName, vanguardDisplayName } from '../utils/packageDedupe';
+import OptimizedImage from './OptimizedImage';
 
 interface PackageCardProps {
   package: Package;
   onClick: (pkg: Package) => void;
   isLoaded: boolean;
   delay: number;
+  compact?: boolean;
+  /** Cards acima do fold devem usar priority=true para o browser começar a
+   *  carregar a imagem imediatamente em vez de esperar pelo IntersectionObserver. */
+  priority?: boolean;
 }
 
-// ===== "POPULAR" badge configuration =====
-const POPULAR_PACKAGE_KEYWORDS = [
-  'backpack system v3',
+// Pick an icon based on the tag label so the card stays expressive even when
+// the admin changes the wording.
+const pickTagIcon = (label: string) => {
+  const lower = label.toLowerCase();
+  if (/(popular|hot|trend)/.test(lower)) return Flame;
+  if (/(new|fresh)/.test(lower)) return Sparkles;
+  if (/(release|update|latest|last)/.test(lower)) return Zap;
+  if (/(star|featured)/.test(lower)) return Star;
+  if (/(bundle|pack|kit)/.test(lower)) return PackageIcon;
+  return TagIcon;
+};
+
+const FRAMEWORK_LIST: Array<{ src: string; label: string }> = [
+  { src: '/esx.png',    label: 'ESX' },
+  { src: '/qbcore.png', label: 'QBCore' },
+  { src: '/qbox.png',   label: 'QBox' },
+];
+// Vanguard catalogue predates QBox and was never adapted for it — surface
+// only the frameworks the scripts actually support.
+const VANGUARD_FRAMEWORK_LIST: Array<{ src: string; label: string }> = [
+  { src: '/esx.png',    label: 'ESX' },
+  { src: '/qbcore.png', label: 'QBCore' },
 ];
 
-const isPopularPackage = (pkgName: string): boolean => {
-  const lower = pkgName.toLowerCase();
-  return POPULAR_PACKAGE_KEYWORDS.some(keyword => lower.includes(keyword));
-};
+function FrameworkBadge({ src, label }: { src: string; label: string }) {
+  return (
+    <span className="framework-badge">
+      <img src={src} alt="" loading="lazy" decoding="async" width={16} height={16} className="framework-badge-icon" />
+      <span>{label}</span>
+    </span>
+  );
+}
 
-const formatFrameworkLabel = (framework: string): string => {
-  const f = framework.toLowerCase().trim();
-  if (f === 'qbcore' || f === 'qb-core' || f === 'qb') return 'QBCore';
-  if (f === 'esx') return 'ESX';
-  if (f === 'qbox' || f === 'qb-box') return 'QBox';
-  return framework;
-};
-
-const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoaded, delay }) => {
-  const { isLoggedIn, addToCart, isInCart, login } = useTebex();
+const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoaded, delay, priority = false }) => {
+  const { isLoggedIn, addToCart, isInCart, openLoginModal } = useTebex();
+  const { format: formatPrice } = useCurrency();
   const { trackCartAdd, trackEvent } = useAnalytics();
   const [isAdding, setIsAdding] = useState(false);
-  const [bgImageIndex, setBgImageIndex] = useState(0);
 
   const inCart = pkg.tebexPackageId ? isInCart(pkg.tebexPackageId) : false;
-  const isPopular = isPopularPackage(pkg.name);
-
-  useEffect(() => {
-    if (!pkg.images || pkg.images.length <= 1) return;
-
-    const interval = setInterval(() => {
-      setBgImageIndex((prev) => (prev + 1) % pkg.images!.length);
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [pkg.images]);
+  const { tags: allTags } = usePackageTags();
+  // Admin-curated package tags ("Popular", "New", "Last Release", …) apply
+  // only to the Oxlyn catalogue. Vanguard is a legacy archive — no manual
+  // promotion of those packages on the storefront — so tag matching is
+  // short-circuited for vanguard cards.
+  const matchedTag = isVanguard(pkg) ? null : findTagForPackage(pkg, allTags);
+  const TagIconComp = matchedTag ? pickTagIcon(matchedTag.label) : null;
+  const tagStyles = matchedTag ? getTagStyles(matchedTag.variant) : null;
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log(`📊 [STATS] User clicked "Add to Cart" for package: ${pkg.name}`);
-
     trackCartAdd(pkg.name, pkg.price);
 
     try {
-      const recordResponse = await fetch(`${API_URL}/orders/stats/record-cart`, {
+      await fetch(`${API_URL}/orders/stats/record-cart`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ packageName: pkg.name })
+        body: JSON.stringify({ packageName: pkg.name }),
       });
-      if (recordResponse.ok) {
-        console.log(`✅ [DB] Recorded add to cart in database: ${pkg.name}`);
-      } else {
-        console.warn(`⚠️ [DB] Failed to record add to cart (HTTP ${recordResponse.status}): ${pkg.name}`);
-      }
-    } catch (error) {
-      console.error(`❌ [DB] Failed to record add to cart:`, error);
+    } catch {
+      /* analytics — silent fail */
     }
 
     if (pkg.tebexPackageId) {
@@ -81,7 +95,7 @@ const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoad
         image: pkg.image,
         qty: 1,
         currency: 'EUR',
-        category: pkg.category
+        category: pkg.category,
       });
       setIsAdding(false);
     }
@@ -89,8 +103,6 @@ const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoad
 
   const handleLogin = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log(`📊 [STATS] User clicked "Add to Cart" but not logged in for package: ${pkg.name}`);
-
     trackEvent('cart_add_login_required', {
       packageName: pkg.name,
       eventData: { price: pkg.price },
@@ -98,119 +110,171 @@ const PackageCard: React.FC<PackageCardProps> = ({ package: pkg, onClick, isLoad
     trackCartAdd(pkg.name, pkg.price);
 
     try {
-      const recordResponse = await fetch(`${API_URL}/orders/stats/record-cart`, {
+      await fetch(`${API_URL}/orders/stats/record-cart`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ packageName: pkg.name })
+        body: JSON.stringify({ packageName: pkg.name }),
       });
-      if (recordResponse.ok) {
-        console.log(`✅ [DB] Recorded cart attempt (not logged in) in database: ${pkg.name}`);
-      }
-    } catch (error) {
-      console.error(`❌ [DB] Failed to record cart attempt:`, error);
+    } catch {
+      /* analytics — silent fail */
     }
 
-    login();
-  }
+    // Gate behind the FiveM login modal instead of jumping straight to the
+    // redirect — the visitor sees the "Please log in" sub-interface first.
+    openLoginModal();
+  };
 
-  const discount = Math.round(((pkg.originalPrice - pkg.price) / pkg.originalPrice) * 100);
-  const backgroundImage = pkg.images && pkg.images.length > 0 ? pkg.images[bgImageIndex] : pkg.image;
-  const cleanName = pkg.name
-    .replace(/\s*\(OPEN-SOURCE\)/gi, '')
-    .replace(/\s*\(ESCROWED\)/gi, '')
-    .replace(/\s*\(Open Source\)/gi, '')
-    .replace(/\s*\(Escrow\)/gi, '')
-    .trim();
+  const isFree = pkg.price === 0;
+  const pkgIsBundle = isBundle(pkg) && !isFree;
+  // Bundles always advertise a fixed 40% off tag regardless of the Tebex
+  // sale/original price split. The marketing line for the Bundles category
+  // is "save 40% vs buying these scripts individually", so the card tag
+  // mirrors that headline number for consistency across the catalog,
+  // bundles page, and homepage carousels.
+  const discount = pkgIsBundle
+    ? 40
+    : pkg.originalPrice > pkg.price && pkg.price > 0
+      ? Math.round(((pkg.originalPrice - pkg.price) / pkg.originalPrice) * 100)
+      : 0;
+  // When forcing 40% on a bundle, derive an "implied original" from the
+  // current price (price / (1 - 0.40)) so the strikethrough reads as a
+  // believable pre-discount number rather than the unchanged Tebex value
+  // (which would equal pkg.price and look like a printing bug).
+  const strikePrice = pkgIsBundle
+    ? pkg.price / 0.6
+    : pkg.originalPrice;
+  // Vanguard packages use a different normaliser — `basePackageName` only
+  // knows about the Oxlyn `(Open Source)` / `(Escrow)` parenthesised
+  // suffix, while Vanguard uses `[UNLOCKED]` brackets that need stripping
+  // for the card title.
+  const cleanName = isVanguard(pkg) ? vanguardDisplayName(pkg.name) : basePackageName(pkg.name);
+  const isSubscription = isSubscriptionPackage(pkg);
+
+  // Spec: every non-subscription package surfaces ESX / QBCore / QBox badges
+  // (with the icons from /public/), regardless of what the Tebex description
+  // happened to mention. Subscription SKUs keep their original framework
+  // list since they're framework-agnostic in nature. Vanguard catalogue
+  // gets the shorter list (no QBox) since those scripts were never adapted
+  // to QBox before the catalogue stopped being maintained.
+  const frameworksToRender = isSubscription
+    ? null
+    : isVanguard(pkg)
+      ? VANGUARD_FRAMEWORK_LIST
+      : FRAMEWORK_LIST;
 
   return (
-    <div
-      className="package-card group rounded-xl sm:rounded-2xl overflow-hidden bg-[#0C0C0C] border border-neutral-700/40 relative h-full flex flex-col hover:border-neutral-600/60 transition-colors duration-300"
-    >
-      {/* Blurred background image */}
+    <div className="package-card group rounded-2xl overflow-hidden bg-[#0d0d0d] border border-white/[0.06] relative h-full flex flex-col transition-colors duration-300">
+      {/* Image */}
       <div
-        className="absolute inset-0 opacity-20 blur-2xl scale-110 transition-opacity duration-1000"
-        style={{
-          backgroundImage: `url(${backgroundImage})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          zIndex: 0,
-        }}
-      />
+        onClick={() => onClick(pkg)}
+        className="relative w-full overflow-hidden cursor-pointer bg-zinc-900 aspect-[16/9]"
+      >
+        <OptimizedImage
+          src={pkg.image}
+          alt={pkg.name}
+          width={520}
+          quality={75}
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
+          decoding="async"
+          className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
+        />
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col flex-1">
-        {/* Image area — slightly shorter on mobile (h-44) for better proportion */}
-        <div onClick={() => {
-          console.log(`📊 [STATS] User clicked on package card: ${pkg.name}`);
-          onClick(pkg);
-        }} className="relative h-44 sm:h-52 lg:h-56 w-full overflow-hidden cursor-pointer">
-          <img
-            src={pkg.image}
-            alt={pkg.name}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-          />
-
-          {/* POPULAR badge */}
-          {isPopular && (
-            <div className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 z-10">
-              <div className="relative">
-                <div className="absolute inset-0 bg-orange-500/60 blur-lg rounded-md animate-pulse" />
-                <div
-                  className="relative inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(255,149,0,0.5)]"
-                  style={{ background: 'linear-gradient(135deg, #FF3B30 0%, #FF9500 100%)' }}
-                >
-                  <Flame className="w-2.5 h-2.5 sm:w-3 sm:h-3" strokeWidth={3} />
-                  <span>Popular</span>
-                </div>
+        {/* Admin-managed tag (e.g. POPULAR / NEW / LAST RELEASE) */}
+        {matchedTag && tagStyles && TagIconComp && (
+          <div className="absolute top-3 right-3 z-10">
+            <div className="relative">
+              <div
+                className="absolute inset-0 blur-md rounded-md opacity-70"
+                style={{ background: tagStyles.glow }}
+              />
+              <div
+                className="relative inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-extrabold uppercase tracking-wider text-white"
+                style={{
+                  background: tagStyles.background,
+                  boxShadow: `0 4px 14px ${tagStyles.glow}`,
+                }}
+              >
+                <TagIconComp className="w-3 h-3" strokeWidth={3} />
+                <span>{matchedTag.label}</span>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 flex flex-col p-6 sm:p-7">
+        <h3
+          onClick={() => onClick(pkg)}
+          className="text-white font-bold text-[17px] sm:text-[18px] leading-snug cursor-pointer hover:text-red-300 transition-colors mb-2.5 line-clamp-2"
+        >
+          {cleanName}
+        </h3>
+
+        <p className="text-gray-400 text-[13px] sm:text-[14px] leading-relaxed font-light mb-4 line-clamp-2">
+          {pkg.description}
+        </p>
+
+        {frameworksToRender && (
+          <div className="flex flex-wrap gap-2 mb-5">
+            {frameworksToRender.map((fw) => (
+              <FrameworkBadge key={fw.label} src={fw.src} label={fw.label} />
+            ))}
+          </div>
+        )}
+
+        {/* Price row — white current, gray strikethrough, red discount badge */}
+        <div className="mt-auto flex items-baseline gap-2.5 mb-4 flex-wrap">
+          <span className="text-white font-extrabold text-[1.85rem] leading-none tabular-nums">
+            {isFree ? 'Free' : formatPrice(pkg.price)}
+          </span>
+          {discount > 0 && !isFree && (
+            <>
+              <span className="text-gray-500 text-sm line-through tabular-nums">
+                {formatPrice(strikePrice)}
+              </span>
+              <span className="px-2 py-1 rounded-md bg-red-600 text-white text-[13px] font-bold tracking-wide leading-none">
+                -{discount}%
+              </span>
+            </>
           )}
         </div>
 
-        {/* Content area */}
-        <div className="p-4 sm:p-5 flex-1 flex flex-col">
-          {/* Title + Price row */}
-          <div className="flex justify-between items-start gap-3 sm:gap-4">
-            <div className="flex-1 min-w-0">
-              <h3 onClick={() => {
-                console.log(`📊 [STATS] User clicked on package title: ${pkg.name}`);
-                onClick(pkg);
-              }} className="text-white font-semibold text-sm sm:text-base leading-tight cursor-pointer hover:text-primary-orange transition-colors break-words">
-                {cleanName}
-              </h3>
-
-              {/* Framework tags below title */}
-              {pkg.frameworks && pkg.frameworks.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {pkg.frameworks.map((framework) => (
-                    <span
-                      key={framework}
-                      className="inline-flex items-center px-2 py-0.5 text-[9px] sm:text-[10px] font-medium tracking-wide text-neutral-400 bg-white/[0.03] border border-white/10 rounded-md hover:text-neutral-200 hover:border-white/20 transition-colors"
-                    >
-                      {formatFrameworkLabel(framework)}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Price — right column, stays compact */}
-            <div className="text-right shrink-0 flex flex-col items-end">
-              <div className="text-primary-orange font-bold text-base sm:text-lg whitespace-nowrap">
-                {pkg.price === 0 ? 'Free' : `${pkg.price.toFixed(2)}€`}
-              </div>
-              {discount > 0 && (
-                <div className="line-through text-[11px] sm:text-xs whitespace-nowrap" style={{color: '#CD5C5C'}}>
-                  €{pkg.originalPrice.toFixed(2)}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Add to Basket — full-width. Always adds the Escrow variant since
+            deduplicatePackages prefers it; users wanting Open Source click
+            the card body to open the product details page. */}
+        {pkg.tebexPackageId ? (
+          <button
+            onClick={isLoggedIn ? handleAddToCart : handleLogin}
+            disabled={isAdding || inCart}
+            className="w-full h-12 rounded-xl bg-white text-black font-semibold text-[15px] hover:bg-zinc-100 active:bg-zinc-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+          >
+            {inCart ? (
+              <>
+                <Check className="w-4 h-4" /> In Basket
+              </>
+            ) : isAdding ? (
+              <>Adding…</>
+            ) : (
+              <>Add to Basket</>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={() => onClick(pkg)}
+            className="w-full h-12 rounded-xl bg-white text-black font-semibold text-[15px] hover:bg-zinc-100 transition-colors inline-flex items-center justify-center gap-2"
+          >
+            View Package
+          </button>
+        )}
       </div>
     </div>
   );
 };
 
-export default PackageCard;
+// React.memo stops re-rendering when parent updates don't actually change
+// the package data — e.g. catalog filters that re-key the list, or hover
+// hover state somewhere up the tree.
+export default React.memo(PackageCard);

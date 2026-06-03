@@ -1,5 +1,8 @@
-const TEBEX_API_BASE = 'https://headless.tebex.io/api';
-const TEBEX_TOKEN = import.meta.env.VITE_TEBEX_TOKEN;
+import { API_URL } from '../config/api';
+
+// All Tebex traffic now goes through our backend proxy at /api/tebex/*.
+// The Tebex token never leaves the server.
+const TEBEX_PROXY = `${API_URL}/tebex`;
 
 export interface CreateBasketParams {
   complete_url?: string;
@@ -117,23 +120,19 @@ class TebexService {
         ...(params?.cancel_url && { cancel_url: params.cancel_url }),
         ...(params?.custom && { custom: params.custom }),
       };
-      
-      const response = await fetch(`${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets`, {
+
+      const response = await fetch(`${TEBEX_PROXY}/baskets`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.text();
         throw new Error(`Failed to create basket: ${response.status}`);
       }
-      const data = await response.json();
 
-      return data;
+      return await response.json();
     } catch (error) {
       return null;
     }
@@ -146,7 +145,7 @@ class TebexService {
     try {
       const returnUrl = encodeURIComponent(window.location.href);
       const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/auth?returnUrl=${returnUrl}`
+        `${TEBEX_PROXY}/baskets/${basketIdent}/auth?returnUrl=${returnUrl}`
       );
 
       if (!response.ok) {
@@ -154,13 +153,8 @@ class TebexService {
       }
 
       const data = await response.json();
-      const fiveMAuthUrl = data[0]?.url;
-
-      if (fiveMAuthUrl) {
-        return fiveMAuthUrl;
-      }
-
-      return null;
+      const fiveMAuthUrl = Array.isArray(data) ? data[0]?.url : data?.url;
+      return fiveMAuthUrl ?? null;
     } catch (error) {
       return null;
     }
@@ -171,22 +165,16 @@ class TebexService {
    */
   async fetchBasketData(basketIdent: string): Promise<BasketData | null> {
     try {
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch basket data: ${response.status}`);
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
       return null;
     }
@@ -197,15 +185,10 @@ class TebexService {
    */
   async fetchFullBasketData(basketIdent: string): Promise<any> {
     try {
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch basket data: ${response.status}`);
@@ -224,56 +207,35 @@ class TebexService {
    */
   async fetchCartData(basketIdent: string): Promise<CartItem[]> {
     try {
-      //console.log('🔍 Fetching cart data for basket:', basketIdent);
-      
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch cart data: ${response.status}`);
       }
 
       const data = await response.json();
-      //console.log('📦 Raw basket data:', data);
-      //console.log('📦 Packages in basket:', data.data?.packages);
 
       if (data.data?.packages) {
-        const cartItems = data.data.packages.map((pkg: any) => {
-          //console.log('🔍 Processing package:', pkg);
-          //console.log('🔍 in_basket data:', pkg.in_basket);
-          
-          // Handle different price structures
-          // Check in_basket first, then fallback to other fields
-          const price = pkg.in_basket?.price 
-            ? pkg.in_basket.price 
-            : (pkg.price?.value 
-              ? pkg.price.value / 100 
+        return data.data.packages.map((pkg: any) => {
+          const price = pkg.in_basket?.price
+            ? pkg.in_basket.price
+            : (pkg.price?.value
+              ? pkg.price.value / 100
               : (pkg.base_price || 0));
-          
-          // Handle different quantity structures
           const quantity = pkg.in_basket?.quantity || pkg.quantity || 1;
-          
           return {
             id: pkg.id,
             name: pkg.name,
-            price: price,
+            price,
             currency: pkg.in_basket?.currency || pkg.price?.currency || 'EUR',
             image: pkg.image || 'https://i.imgur.com/LVePQtC.jpeg',
             qty: quantity,
           };
         });
-        //console.log('✅ Mapped cart items:', cartItems);
-        return cartItems;
       }
-
-      //console.log('⚠️ No packages found in basket data');
       return [];
     } catch (error) {
       console.error('❌ Error fetching cart data:', error);
@@ -284,31 +246,28 @@ class TebexService {
   /**
    * Adds a package to the basket
    */
-  async addToBasket(basketIdent: string, packageId: number, quantity: number = 1): Promise<boolean> {
+  async addToBasket(
+    basketIdent: string,
+    packageId: number,
+    quantity: number = 1,
+    discordId?: string
+  ): Promise<boolean> {
     try {
-      //console.log('🔵 Tebex API: Adding to basket', { basketIdent, packageId, quantity });
-      
-      const response = await fetch(
-        `${TEBEX_API_BASE}/baskets/${basketIdent}/packages`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            package_id: packageId,
-            quantity: quantity,
-          }),
-        }
-      );
+      // `discord_id` is only sent for packages that declare a required
+      // discord_id option (the install add-on). The proxy forwards it to Tebex
+      // as variable_data; packages without the option never receive it.
+      const payload: Record<string, unknown> = { package_id: packageId, quantity };
+      if (discordId) payload.discord_id = discordId;
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}/packages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Tebex API Error:', response.status, errorText);
-      } else {
-        //console.log('✅ Tebex API: Successfully added to basket');
       }
-
       return response.ok;
     } catch (error) {
       console.error('❌ Network error adding to basket:', error);
@@ -321,19 +280,11 @@ class TebexService {
    */
   async removeFromBasket(basketIdent: string, packageId: number): Promise<boolean> {
     try {
-      const response = await fetch(
-        `${TEBEX_API_BASE}/baskets/${basketIdent}/packages/remove`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            package_id: packageId,
-          }),
-        }
-      );
-
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}/packages/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_id: packageId }),
+      });
       return response.ok;
     } catch (error) {
       return false;
@@ -345,29 +296,17 @@ class TebexService {
    */
   async getCheckoutUrl(basketIdent: string): Promise<string | null> {
     try {
-      //console.log('🔗 Fetching checkout URL for basket:', basketIdent);
-      
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch checkout URL: ${response.status}`);
       }
 
       const data = await response.json();
-      //console.log('✅ Basket data for checkout:', data);
-      
-      const checkoutUrl = data.data?.links?.checkout || null;
-      //console.log('🔗 Checkout URL:', checkoutUrl);
-      
-      return checkoutUrl;
+      return data.data?.links?.checkout || null;
     } catch (error) {
       console.error('❌ Error fetching checkout URL:', error);
       return null;
@@ -375,18 +314,14 @@ class TebexService {
   }
 
   /**
-   * Fetches CFX user info from the policy API
+   * Fetches CFX user info from the policy API (proxied through our backend)
    */
   async fetchCFXUserInfo(usernameId: string): Promise<{ name: string; username: string; avatar_template: string } | null> {
     try {
-      const response = await fetch(
-        `/api/cfx-user/${usernameId}`
-      );
-
+      const response = await fetch(`${API_URL}/cfx-user/${usernameId}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch CFX user info: ${response.status}`);
       }
-
       const data = await response.json();
       return {
         name: data.name,
@@ -403,27 +338,17 @@ class TebexService {
    */
   async fetchPackages(): Promise<TebexPackageDetails[]> {
     try {
-      //console.log('🔵 Fetching packages from Tebex API...');
-      
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/packages`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/packages`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (!response.ok) {
         console.error('❌ Failed to fetch packages:', response.status);
-        const errorText = await response.text();
-        console.error('Error details:', errorText);
         return [];
       }
 
       const data: PackageListResponse = await response.json();
-
       return data.data || [];
     } catch (error) {
       console.error('❌ Error fetching packages:', error);
@@ -436,15 +361,10 @@ class TebexService {
    */
   async fetchCategories(): Promise<TebexCategory[]> {
     try {
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/categories`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/categories`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (!response.ok) {
         console.error('❌ Failed to fetch categories:', response.status);
@@ -464,40 +384,25 @@ class TebexService {
    */
   async applyCoupon(basketIdent: string, couponCode: string): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
-      console.log('🔵 Applying coupon:', { basketIdent, couponCode });
-
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/coupons`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': '*/*',
-          },
-          body: JSON.stringify({
-            coupon_code: couponCode,
-          }),
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}/coupons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+        body: JSON.stringify({ coupon_code: couponCode }),
+      });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ API Error Response:', errorData);
+        const errorData = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: errorData.detail || errorData.title || 'Failed to apply coupon'
+          error: errorData.detail || errorData.title || errorData.error || 'Failed to apply coupon',
         };
       }
 
       const data = await response.json();
-      console.log('✅ Coupon applied successfully:', data);
       return { success: true, data: data.data };
     } catch (error) {
       console.error('❌ Error applying coupon:', error);
-      return {
-        success: false,
-        error: 'An error occurred while applying the coupon'
-      };
+      return { success: false, error: 'An error occurred while applying the coupon' };
     }
   }
 
@@ -506,39 +411,24 @@ class TebexService {
    */
   async removeCoupon(basketIdent: string, couponCode: string): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('🔵 Removing coupon from basket:', basketIdent, 'Coupon:', couponCode);
-
-      const response = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/coupons/remove`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': '*/*',
-          },
-          body: JSON.stringify({
-            coupon_code: couponCode,
-          }),
-        }
-      );
+      const response = await fetch(`${TEBEX_PROXY}/baskets/${basketIdent}/coupons/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+        body: JSON.stringify({ coupon_code: couponCode }),
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('❌ API Error Response:', errorData);
         return {
           success: false,
-          error: errorData.detail || errorData.title || 'Failed to remove coupon'
+          error: errorData.detail || errorData.title || errorData.error || 'Failed to remove coupon',
         };
       }
 
-      console.log('✅ Coupon removed successfully');
       return { success: true };
     } catch (error) {
       console.error('❌ Error removing coupon:', error);
-      return {
-        success: false,
-        error: 'An error occurred while removing the coupon'
-      };
+      return { success: false, error: 'An error occurred while removing the coupon' };
     }
   }
 }

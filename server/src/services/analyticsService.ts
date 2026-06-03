@@ -22,6 +22,7 @@ export interface SessionInfo {
   userId?: number;
   deviceType?: 'mobile' | 'tablet' | 'desktop';
   country?: string;
+  ipAddress?: string;
 }
 
 /**
@@ -73,6 +74,7 @@ export function enrichSessionInfo(session: Partial<SessionInfo>, req: any): Sess
     userId: session.userId,
     deviceType: session.deviceType || deviceInfo.deviceType,
     country: geo.country || undefined,
+    ipAddress: ipAddress || undefined,
   };
 }
 

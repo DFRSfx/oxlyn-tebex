@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, Eye, ShoppingCart, TrendingUp, Clock, Activity, RefreshCw } from 'lucide-react';
-import { MetricsCard } from '../components/charts/MetricsCard';
+import { BarChart3, Users, Eye, ShoppingCart, TrendingUp, Clock, Activity, RefreshCw, FileText } from 'lucide-react';
+import { MetricsCard, MetricHealth } from '../components/charts/MetricsCard';
 import { TimeSeriesChart } from '../components/charts/TimeSeriesChart';
 import { ConversionFunnelChart } from '../components/charts/ConversionFunnelChart';
 import { DeviceBreakdownChart } from '../components/charts/DeviceBreakdownChart';
 import { GeographicChart } from '../components/charts/GeographicChart';
+import { TopPackagesChart, TopPackageItem } from '../components/charts/TopPackagesChart';
+import { TopPagesChart, TopPageItem } from '../components/charts/TopPagesChart';
 import { API_URL } from '../../config/api';
 
 type Period = '7d' | '30d' | '90d';
@@ -19,13 +21,39 @@ interface DashboardStats {
   unique_visitors: number;
 }
 
+const PERIOD_DAYS: Record<Period, number> = {
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+};
+
+// % change between current and previous values. Returns 0 when previous is 0
+// to avoid Infinity / divide-by-zero — the UI shows "no comparison" in that case.
+const pctChange = (current: number, previous: number): number | undefined => {
+  if (previous === undefined || previous === null) return undefined;
+  if (previous === 0) return current === 0 ? 0 : undefined;
+  return ((current - previous) / previous) * 100;
+};
+
+// Health classifiers — thresholds chosen from common e-commerce benchmarks.
+// Tweak per business rules if conversion expectations differ.
+const bounceRateHealth = (rate: number): MetricHealth =>
+  rate < 40 ? 'good' : rate < 60 ? 'warning' : 'bad';
+
+const conversionRateHealth = (rate: number): MetricHealth =>
+  rate >= 2 ? 'good' : rate >= 0.5 ? 'warning' : 'bad';
+
+const sessionDurationHealth = (seconds: number): MetricHealth =>
+  seconds >= 120 ? 'good' : seconds >= 30 ? 'warning' : 'bad';
+
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>('7d');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Dashboard stats
+  // Dashboard stats — current + previous period for comparison
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [previousStats, setPreviousStats] = useState<DashboardStats | null>(null);
 
   // Chart data
   const [sessionsTimeSeries, setSessionsTimeSeries] = useState<any[]>([]);
@@ -33,8 +61,10 @@ export default function AnalyticsPage() {
   const [conversionFunnel, setConversionFunnel] = useState<any[]>([]);
   const [deviceData, setDeviceData] = useState<any[]>([]);
   const [geographicData, setGeographicData] = useState<any[]>([]);
+  const [topPackagesViews, setTopPackagesViews] = useState<TopPackageItem[]>([]);
+  const [topPackagesCart, setTopPackagesCart] = useState<TopPackageItem[]>([]);
+  const [topPages, setTopPages] = useState<TopPageItem[]>([]);
 
-  // Fetch all analytics data
   const fetchAnalyticsData = async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -42,70 +72,83 @@ export default function AnalyticsPage() {
       setLoading(true);
     }
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-      };
-
+      const headers = { 'Content-Type': 'application/json' };
       const credentials = 'include' as RequestCredentials;
+      const init = { headers, credentials };
 
-      // Fetch dashboard stats
-      const statsRes = await fetch(
-        `${API_URL}/analytics/dashboard-stats?period=${period}`,
-        { headers, credentials }
-      );
+      // Compute the previous-period window of equal length so we can compare.
+      const days = PERIOD_DAYS[period];
+      const now = new Date();
+      const prevTo = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      const prevFrom = new Date(prevTo.getTime() - days * 24 * 60 * 60 * 1000);
+      const prevQuery = `from=${encodeURIComponent(prevFrom.toISOString())}&to=${encodeURIComponent(prevTo.toISOString())}`;
+
+      // Fire all requests in parallel — none depends on another's response.
+      const [
+        statsRes,
+        prevStatsRes,
+        sessionsRes,
+        pageViewsRes,
+        funnelRes,
+        devicesRes,
+        geoRes,
+        topPkgViewsRes,
+        topPkgCartRes,
+        topPagesRes,
+      ] = await Promise.all([
+        fetch(`${API_URL}/analytics/dashboard-stats?period=${period}`, init),
+        fetch(`${API_URL}/analytics/dashboard-stats?${prevQuery}`, init),
+        fetch(`${API_URL}/analytics/time-series?metric=sessions&period=${period}`, init),
+        fetch(`${API_URL}/analytics/time-series?metric=page_views&period=${period}`, init),
+        fetch(`${API_URL}/analytics/conversion-funnel?period=${period}`, init),
+        fetch(`${API_URL}/analytics/devices?period=${period}`, init),
+        fetch(`${API_URL}/analytics/geographic?period=${period}`, init),
+        fetch(`${API_URL}/statistics/packages/views/top?limit=8`, init),
+        fetch(`${API_URL}/statistics/packages/cart/top?limit=8`, init),
+        fetch(`${API_URL}/analytics/top-pages?period=${period}&limit=8`, init),
+      ]);
+
       if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setDashboardStats(statsData.data);
+        const j = await statsRes.json();
+        setDashboardStats(j.data);
       }
-
-      // Fetch time-series for sessions
-      const sessionsRes = await fetch(
-        `${API_URL}/analytics/time-series?metric=sessions&period=${period}`,
-        { headers, credentials }
-      );
+      if (prevStatsRes.ok) {
+        const j = await prevStatsRes.json();
+        setPreviousStats(j.data);
+      } else {
+        setPreviousStats(null);
+      }
       if (sessionsRes.ok) {
-        const sessionsData = await sessionsRes.json();
-        setSessionsTimeSeries(sessionsData.data);
+        const j = await sessionsRes.json();
+        setSessionsTimeSeries(j.data);
       }
-
-      // Fetch time-series for page views
-      const pageViewsRes = await fetch(
-        `${API_URL}/analytics/time-series?metric=page_views&period=${period}`,
-        { headers, credentials }
-      );
       if (pageViewsRes.ok) {
-        const pageViewsData = await pageViewsRes.json();
-        setPageViewsTimeSeries(pageViewsData.data);
+        const j = await pageViewsRes.json();
+        setPageViewsTimeSeries(j.data);
       }
-
-      // Fetch conversion funnel
-      const funnelRes = await fetch(
-        `${API_URL}/analytics/conversion-funnel?period=${period}`,
-        { headers, credentials }
-      );
       if (funnelRes.ok) {
-        const funnelData = await funnelRes.json();
-        setConversionFunnel(funnelData.data);
+        const j = await funnelRes.json();
+        setConversionFunnel(j.data);
       }
-
-      // Fetch device breakdown
-      const devicesRes = await fetch(
-        `${API_URL}/analytics/devices?period=${period}`,
-        { headers, credentials }
-      );
       if (devicesRes.ok) {
-        const devicesData = await devicesRes.json();
-        setDeviceData(devicesData.data);
+        const j = await devicesRes.json();
+        setDeviceData(j.data);
       }
-
-      // Fetch geographic data
-      const geoRes = await fetch(
-        `${API_URL}/analytics/geographic?period=${period}`,
-        { headers, credentials }
-      );
       if (geoRes.ok) {
-        const geoData = await geoRes.json();
-        setGeographicData(geoData.data);
+        const j = await geoRes.json();
+        setGeographicData(j.data);
+      }
+      if (topPkgViewsRes.ok) {
+        const j = await topPkgViewsRes.json();
+        setTopPackagesViews(j.data || []);
+      }
+      if (topPkgCartRes.ok) {
+        const j = await topPkgCartRes.json();
+        setTopPackagesCart(j.data || []);
+      }
+      if (topPagesRes.ok) {
+        const j = await topPagesRes.json();
+        setTopPages(j.data || []);
       }
     } catch (error) {
       console.error('Failed to fetch analytics data:', error);
@@ -115,7 +158,6 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Fetch data on mount and when period changes
   useEffect(() => {
     fetchAnalyticsData();
   }, [period]);
@@ -123,7 +165,7 @@ export default function AnalyticsPage() {
   // Auto-refresh every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchAnalyticsData();
+      fetchAnalyticsData(true);
     }, 60000);
 
     return () => clearInterval(interval);
@@ -133,6 +175,19 @@ export default function AnalyticsPage() {
     '7d': '7 dias',
     '30d': '30 dias',
     '90d': '90 dias',
+  };
+
+  const compareLabel = `vs ${periodLabels[period]} anteriores`;
+
+  // Pre-compute changes so MetricsCard JSX stays clean.
+  const change = {
+    sessions: pctChange(dashboardStats?.total_sessions ?? 0, previousStats?.total_sessions ?? 0),
+    pageViews: pctChange(dashboardStats?.total_page_views ?? 0, previousStats?.total_page_views ?? 0),
+    avgDuration: pctChange(dashboardStats?.avg_session_duration ?? 0, previousStats?.avg_session_duration ?? 0),
+    uniqueVisitors: pctChange(dashboardStats?.unique_visitors ?? 0, previousStats?.unique_visitors ?? 0),
+    bounceRate: pctChange(dashboardStats?.bounce_rate ?? 0, previousStats?.bounce_rate ?? 0),
+    conversionRate: pctChange(dashboardStats?.conversion_rate ?? 0, previousStats?.conversion_rate ?? 0),
+    totalEvents: pctChange(dashboardStats?.total_events ?? 0, previousStats?.total_events ?? 0),
   };
 
   return (
@@ -199,29 +254,46 @@ export default function AnalyticsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricsCard
-            title="Total Sessions"
+            title="Sessões totais"
             value={dashboardStats?.total_sessions || 0}
+            change={change.sessions}
+            changeLabel={compareLabel}
             icon={<Users className="w-5 h-5" />}
             loading={loading}
+            tooltip="Cada visita ao site conta como uma sessão. Uma sessão termina após 30 minutos de inatividade. A mesma pessoa pode ter várias sessões em dias diferentes."
           />
           <MetricsCard
-            title="Page Views"
+            title="Visualizações de página"
             value={dashboardStats?.total_page_views || 0}
+            change={change.pageViews}
+            changeLabel={compareLabel}
             icon={<Eye className="w-5 h-5" />}
             loading={loading}
+            tooltip="Total de páginas vistas no período. Cada navegação para uma página nova conta. Reloads da mesma página não duplicam o número."
           />
           <MetricsCard
-            title="Avg Session Duration"
+            title="Duração média da sessão"
             value={dashboardStats?.avg_session_duration || 0}
+            change={change.avgDuration}
+            changeLabel={compareLabel}
             format="duration"
             icon={<Clock className="w-5 h-5" />}
             loading={loading}
+            tooltip="Tempo médio que cada visitante passa no site. Bom: acima de 2 min · Atenção: 30s-2min · Crítico: abaixo de 30s. Sessões longas indicam interesse real."
+            health={
+              dashboardStats && dashboardStats.avg_session_duration > 0
+                ? sessionDurationHealth(dashboardStats.avg_session_duration)
+                : undefined
+            }
           />
           <MetricsCard
-            title="Unique Visitors"
+            title="Visitantes únicos"
             value={dashboardStats?.unique_visitors || 0}
+            change={change.uniqueVisitors}
+            changeLabel={compareLabel}
             icon={<Users className="w-5 h-5" />}
             loading={loading}
+            tooltip="Número aproximado de pessoas diferentes que visitaram o site. Calculado por sessão — a mesma pessoa em dias diferentes conta separadamente."
           />
         </div>
 
@@ -230,24 +302,44 @@ export default function AnalyticsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <MetricsCard
-            title="Bounce Rate"
+            title="Taxa de rejeição"
             value={dashboardStats?.bounce_rate || 0}
+            change={change.bounceRate}
+            changeLabel={compareLabel}
             format="percentage"
             icon={<TrendingUp className="w-5 h-5" />}
             loading={loading}
+            tooltip="Percentagem de visitantes que viram apenas uma página e saíram. Bom: abaixo de 40% · Atenção: 40-60% · Crítico: acima de 60%. Quanto mais baixa, melhor."
+            health={
+              dashboardStats && dashboardStats.bounce_rate > 0
+                ? bounceRateHealth(dashboardStats.bounce_rate)
+                : undefined
+            }
+            invertTrend
           />
           <MetricsCard
-            title="Conversion Rate"
+            title="Taxa de conversão"
             value={dashboardStats?.conversion_rate || 0}
+            change={change.conversionRate}
+            changeLabel={compareLabel}
             format="percentage"
             icon={<ShoppingCart className="w-5 h-5" />}
             loading={loading}
+            tooltip="Percentagem de sessões que resultaram em compra. Bom: acima de 2% · Atenção: 0.5-2% · Crítico: abaixo de 0.5%. Para FiveM scripts, 1-3% é normal."
+            health={
+              dashboardStats && dashboardStats.conversion_rate >= 0
+                ? conversionRateHealth(dashboardStats.conversion_rate)
+                : undefined
+            }
           />
           <MetricsCard
-            title="Total Events"
+            title="Eventos totais"
             value={dashboardStats?.total_events || 0}
+            change={change.totalEvents}
+            changeLabel={compareLabel}
             icon={<BarChart3 className="w-5 h-5" />}
             loading={loading}
+            tooltip="Soma de todas as ações registadas: cliques, scrolls, vistas de pacote, adições ao carrinho, compras. Reflete a atividade total no site."
           />
         </div>
 
@@ -257,13 +349,13 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <TimeSeriesChart
             data={sessionsTimeSeries}
-            title="Sessions Over Time"
+            title="Sessões ao longo do tempo"
             color="#facc15"
             loading={loading}
           />
           <TimeSeriesChart
             data={pageViewsTimeSeries}
-            title="Page Views Over Time"
+            title="Visualizações ao longo do tempo"
             color="#3b82f6"
             loading={loading}
           />
@@ -272,7 +364,14 @@ export default function AnalyticsPage() {
         {/* Section: Conversion */}
         <SectionLabel icon={<ShoppingCart size={14} />} text="Funil de Conversão" />
 
-        <ConversionFunnelChart data={conversionFunnel} loading={loading} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ConversionFunnelChart data={conversionFunnel} loading={loading} />
+          <TopPackagesChart
+            viewsData={topPackagesViews}
+            cartData={topPackagesCart}
+            loading={loading}
+          />
+        </div>
 
         {/* Section: Audience */}
         <SectionLabel icon={<Eye size={14} />} text="Análise de Audiência" />
@@ -281,6 +380,11 @@ export default function AnalyticsPage() {
           <DeviceBreakdownChart data={deviceData} loading={loading} />
           <GeographicChart data={geographicData} loading={loading} />
         </div>
+
+        {/* Section: Engagement — Top Pages */}
+        <SectionLabel icon={<FileText size={14} />} text="Páginas Mais Visitadas" />
+
+        <TopPagesChart data={topPages} loading={loading} />
       </div>
     </div>
   );

@@ -47,4 +47,15 @@ router.get('/top-pages', authenticate, requireAdmin, AnalyticsController.getTopP
 // Get session details
 router.get('/session/:sessionId', authenticate, requireAdmin, AnalyticsController.getSessionDetails);
 
+// =========================================================================
+// VANGUARD-SCOPED ANALYTICS — restricts the same shapes to traffic that
+// touched /vanguardscripts or /vanguardbundles. Powers the dedicated
+// "Vanguard Analytics" admin tab.
+// =========================================================================
+router.get('/vanguard/dashboard-stats', authenticate, requireAdmin, AnalyticsController.getVanguardDashboardStats);
+router.get('/vanguard/time-series',      authenticate, requireAdmin, AnalyticsController.getVanguardTimeSeries);
+router.get('/vanguard/geographic',       authenticate, requireAdmin, AnalyticsController.getVanguardGeographicData);
+router.get('/vanguard/devices',          authenticate, requireAdmin, AnalyticsController.getVanguardDeviceData);
+router.get('/vanguard/top-pages',        authenticate, requireAdmin, AnalyticsController.getVanguardTopPages);
+
 export default router;

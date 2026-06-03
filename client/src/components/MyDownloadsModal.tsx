@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { Download, Package, X, Gift } from 'lucide-react';
 import ClaimTokenModal from './ClaimTokenModal';
 import DownloadConfirmModal from './DownloadConfirmModal';
-import Loader from './Loader';
 import { API_URL } from '../config/api';
 
 interface DownloadItem {
@@ -34,8 +33,6 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
     remainingDownloads: number;
   } | null>(null);
   const [downloadingToken, setDownloadingToken] = useState<string | null>(null);
-  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
-  const [checkoutMessage, setCheckoutMessage] = useState('');
 
   useEffect(() => {
     if (isOpen && user?.discordId) {
@@ -77,67 +74,55 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
   };
 
   const downloadPackageScripts = async () => {
-    const TEBEX_API_BASE = 'https://headless.tebex.io/api';
-    const TEBEX_TOKEN = 'rnzg-c64b4c58bc9563a37c956af67b1e357a2a414208';
-
     try {
-      setIsProcessingCheckout(true);
-      setCheckoutMessage('Fetching packages...');
+      // The OXLYN PACK lives in a SEPARATE Tebex store from the main catalog.
+      // The backend exposes that store under /api/tebex-claim/* using a
+      // dedicated server-side token (TEBEX_CLAIM_TOKEN) — this keeps the two
+      // stores cleanly separated and never leaks either token to the client.
+      const claimBase = `${API_URL}/tebex-claim`;
 
-      // Fetch all packages to find the correct package ID
-      const packagesResponse = await fetch(`${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/packages`, {
+      const packagesResponse = await fetch(`${claimBase}/packages`, {
         headers: { 'Content-Type': 'application/json' },
       });
-
       if (!packagesResponse.ok) {
-        setIsProcessingCheckout(false);
+        console.error('❌ Failed to fetch claim packages:', packagesResponse.status);
         return;
       }
-
       const packagesData = await packagesResponse.json();
       const oxlynPackage = packagesData.data?.find((pkg: any) =>
         pkg.name?.toUpperCase().includes('OXLYN PACK')
       );
 
       if (!oxlynPackage) {
-        console.error('❌ Could not find OXLYN PACK package');
-        setIsProcessingCheckout(false);
+        console.error('❌ Could not find OXLYN PACK package in claim store');
         return;
       }
 
-      // Create a basket
-      setCheckoutMessage('Creating basket...');
-      const basketResponse = await fetch(`${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets`, {
+      const basketResponse = await fetch(`${claimBase}/baskets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ complete_auto_redirect: true }),
       });
-
       if (!basketResponse.ok) {
-        setIsProcessingCheckout(false);
+        console.error('❌ Failed to create claim basket:', basketResponse.status);
         return;
       }
-
       const basketData = await basketResponse.json();
-      const basketIdent = basketData.data?.ident;
-
+      const basketIdent = basketData?.data?.ident;
       if (!basketIdent) {
-        setIsProcessingCheckout(false);
         return;
       }
 
-      // Tebex requires game account auth before packages can be added.
-      // Get the auth URL and redirect the current window through it.
-      // After auth, Tebex redirects back with basket ident + package ID in the URL
-      // and App.tsx opens the Tebex checkout modal.
-      setCheckoutMessage('Preparing authentication...');
+      // Tebex requires game-account auth before packages can be added.
+      // Fetch the auth URL through the claim proxy and redirect; after auth
+      // Tebex redirects back with ident + package id and App.tsx adds the
+      // package and opens the checkout. The post-auth /baskets/{ident}/packages
+      // endpoint is store-agnostic, so the regular /api/tebex proxy works
+      // there — the basket ident itself identifies the store.
       const returnUrl = `${window.location.origin}/?tebex_ident=${encodeURIComponent(basketIdent)}&tebex_pkg=${oxlynPackage.id}`;
       const authResponse = await fetch(
-        `${TEBEX_API_BASE}/accounts/${TEBEX_TOKEN}/baskets/${basketIdent}/auth?returnUrl=${encodeURIComponent(returnUrl)}`,
-        { headers: { 'Content-Type': 'application/json' } }
+        `${claimBase}/baskets/${basketIdent}/auth?returnUrl=${encodeURIComponent(returnUrl)}`
       );
-
-      setIsProcessingCheckout(false);
 
       if (!authResponse.ok) {
         console.error('❌ Failed to get auth URL:', authResponse.status);
@@ -145,7 +130,6 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
       }
 
       const authData = await authResponse.json();
-      // Auth response is an array of login methods (Steam, FiveM, etc.)
       const authUrl = Array.isArray(authData) ? authData[0]?.url : authData?.url;
 
       if (!authUrl) {
@@ -153,13 +137,9 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
         return;
       }
 
-      // Navigate the current window to Tebex auth; after login Tebex redirects back
-      // to our site where App.tsx opens the checkout modal via launchTebexCheckout.
       window.location.href = authUrl;
-
     } catch (error) {
       console.error('❌ Error during Tebex checkout:', error);
-      setIsProcessingCheckout(false);
     }
   };
 
@@ -240,11 +220,6 @@ export default function MyDownloadsModal({ isOpen, onClose }: MyDownloadsModalPr
   };
 
   if (!isOpen) return null;
-
-  // Show loader during checkout process
-  if (isProcessingCheckout) {
-    return <Loader message={checkoutMessage} />;
-  }
 
   return (
     <>

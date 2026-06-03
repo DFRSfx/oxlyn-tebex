@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import OptimizedImage from '../../components/OptimizedImage';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -12,7 +13,16 @@ import {
   Download,
   BarChart3,
   Users,
-  TrendingUp
+  TrendingUp,
+  Tag as TagIcon,
+  ArrowUpDown,
+  Package as PackageIcon,
+  FolderTree,
+  Star,
+  Timer,
+  Receipt,
+  Globe,
+  Archive
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -28,9 +38,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Painel', path: '/admin', icon: LayoutDashboard },
     { name: 'Estatísticas', path: '/admin/estatisticas', icon: BarChart3 },
     { name: 'Analytics', path: '/admin/analytics', icon: TrendingUp },
+    { name: 'Vanguard Analytics', path: '/admin/analytics-vanguard', icon: Archive },
     { name: 'Pedidos', path: '/admin/compras', icon: ShoppingCart },
     { name: 'Downloads', path: '/admin/downloads', icon: Download },
     { name: 'Utilizadores', path: '/admin/utilizadores', icon: Users },
+    { name: 'Tags', path: '/admin/tags', icon: TagIcon },
+    { name: 'Bundles', path: '/admin/bundles', icon: PackageIcon },
+    { name: 'Categorias', path: '/admin/categorias', icon: FolderTree },
+    { name: 'Ordem', path: '/admin/ordem', icon: ArrowUpDown },
+    { name: 'Top Scripts', path: '/admin/top-sellers', icon: Star },
+    { name: 'Countdown', path: '/admin/countdown', icon: Timer },
+    { name: 'Recent Payments', path: '/admin/recent-payments', icon: Receipt },
+    { name: 'IP Connection', path: '/admin/ip-connections', icon: Globe },
   ];
 
   const isActive = (path: string) => {
@@ -62,7 +81,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <div className="h-16 flex items-center justify-between px-5 border-b border-white/5 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
-              <img src="https://i.imgur.com/ndYSTED.png" alt="OXLYN Logo" className="h-10 w-auto transition-transform duration-300 hover:scale-110 logo-glow"/>
+              <OptimizedImage src="/logo.webp" alt="OXLYN Logo" width={64} format="webp" className="h-10 w-auto transition-transform duration-300 hover:scale-110 logo-glow"/>
             </div>
             <div>
               <h1 className="text-sm font-semibold text-white">Painel Admin</h1>

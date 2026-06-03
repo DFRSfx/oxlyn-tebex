@@ -1,21 +1,58 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
 import { Shield, FileText, Scale } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
-const RevealSection = ({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) => {
+/**
+ * Reveal-on-scroll usando IntersectionObserver — substitui o framer-motion
+ * antes usado só para fade-in. ~50KB poupados no bundle. Aparece uma vez.
+ */
+const RevealSection: React.FC<{ children: React.ReactNode; delay?: number }> = ({
+  children,
+  delay = 0,
+}) => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setVisible(true);
+            obs.disconnect();
+          }
+        });
+      },
+      { rootMargin: '-50px' }
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, []);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-50px" }}
-      transition={{ duration: 0.6, delay: delay, ease: "easeOut" }}
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(30px)',
+        transition: `opacity 0.6s ease-out ${delay}s, transform 0.6s ease-out ${delay}s`,
+        willChange: visible ? 'auto' : 'opacity, transform',
+      }}
     >
       {children}
-    </motion.div>
+    </div>
   );
 };
 
 const TermsPage: React.FC = () => {
+  useSEO({
+    title: 'Terms of Service',
+    description:
+      'Terms of service for OXLYN Software. Read our policies on FiveM script licensing, refunds, support, and use of our digital products.',
+    canonical: '/terms',
+  });
   return (
     <div className="min-h-screen bg-[#050505] text-white relative z-10 selection:bg-white/20 selection:text-white">
       {/* Same background as homepage */}
@@ -30,34 +67,26 @@ const TermsPage: React.FC = () => {
       <div className="relative z-10 container mx-auto max-w-4xl px-6 py-24 md:py-32">
         {/* Header Section */}
         <header className="text-center mb-24">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-          >
-            <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/15 to-red-500/15 border border-orange-500/30 mb-8 backdrop-blur-sm">
+          <div className="apple-slide-up">
+            <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/15 to-red-500/15 border border-orange-500/30 mb-8">
               <Scale className="w-5 h-5 text-orange-400" />
               <span className="text-sm font-bold text-orange-400 uppercase tracking-widest">Legal</span>
             </div>
             <h1 className="text-5xl md:text-7xl font-black mb-6 tracking-tight">
               Terms of <span className="gradient-text-brand">Service</span>
             </h1>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.7, delay: 0.2 }}
-          >
+          </div>
+
+          <div className="apple-fade-in" style={{ animationDelay: '200ms' }}>
             <p className="text-neutral-500 text-sm md:text-base font-medium uppercase tracking-widest">
               Last updated: February 13, 2026
             </p>
-          </motion.div>
+          </div>
         </header>
 
         {/* Content Section */}
         <div className="space-y-16">
-          
+
           {/* 1. Acceptance of Terms */}
           <RevealSection>
             <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-8">

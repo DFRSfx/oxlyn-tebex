@@ -13,6 +13,11 @@ export interface AnalyticsConfig {
 /**
  * Analytics SDK for tracking user behavior
  */
+// Persisted across loads so a logged-in admin is suppressed from the very
+// first byte on repeat visits (the SDK constructor reads this synchronously,
+// before the first session-start fires).
+const SUPPRESS_KEY = 'analytics_suppressed';
+
 export class AnalyticsSDK {
   private config: AnalyticsConfig;
   private sessionManager: SessionManager;
@@ -21,6 +26,11 @@ export class AnalyticsSDK {
   private isInitialized: boolean = false;
   private lastPageView: string | null = null;
   private pageViewDebounceTimer: NodeJS.Timeout | null = null;
+  // When true, every outbound tracking call is a no-op. Used to keep admin
+  // accounts (james, oxlyn, soares, …) out of the analytics entirely — their
+  // sessions, page views, clicks, cart adds and purchases must never pollute
+  // the storefront metrics.
+  private suppressed: boolean = false;
 
   constructor(config: AnalyticsConfig) {
     this.config = {
@@ -28,6 +38,7 @@ export class AnalyticsSDK {
       ...config,
     };
 
+    this.suppressed = AnalyticsSDK.readSuppressHint();
     this.deviceInfo = DeviceDetector.detect();
     this.sessionManager = new SessionManager();
     this.eventQueue = new EventQueue(this.sendEvents.bind(this));
@@ -35,11 +46,37 @@ export class AnalyticsSDK {
     this.init();
   }
 
+  private static readSuppressHint(): boolean {
+    try {
+      return localStorage.getItem(SUPPRESS_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Enable/disable analytics suppression. Persists the choice so it survives
+   * reloads. Called from the app whenever auth resolves the visitor's role.
+   */
+  setSuppressed(value: boolean): void {
+    this.suppressed = value;
+    try {
+      localStorage.setItem(SUPPRESS_KEY, value ? '1' : '0');
+    } catch {
+      /* private mode — in-memory flag still applies for this session */
+    }
+    // If we just turned tracking back on and never started a session
+    // (e.g. admin logged out), start one now so the visitor is counted.
+    if (!value && !this.isInitialized) {
+      this.init();
+    }
+  }
+
   /**
    * Initialize SDK
    */
   private async init(): Promise<void> {
-    if (this.isInitialized) {
+    if (this.isInitialized || this.suppressed) {
       return;
     }
 
@@ -55,6 +92,7 @@ export class AnalyticsSDK {
    * Start analytics session
    */
   private async startSession(): Promise<void> {
+    if (this.suppressed) return;
     const baseUrl = this.config.apiUrl.replace(/\/$/, '');
     const url = `${baseUrl}/analytics/session/start`;
 
@@ -89,6 +127,7 @@ export class AnalyticsSDK {
       eventData?: any;
     }
   ): void {
+    if (this.suppressed) return;
     const event: QueuedEvent = {
       eventId: uuidv4(),
       eventType,
@@ -109,6 +148,7 @@ export class AnalyticsSDK {
    * Track page view (with debounce to prevent duplicates)
    */
   trackPageView(pageUrl?: string): void {
+    if (this.suppressed) return;
     const url = pageUrl || window.location.pathname;
 
     if (this.lastPageView === url) {
@@ -180,6 +220,7 @@ export class AnalyticsSDK {
     funnelStage: 'view' | 'cart' | 'purchase',
     price?: number
   ): void {
+    if (this.suppressed) return;
     const baseUrl = this.config.apiUrl.replace(/\/$/, '');
     fetch(`${baseUrl}/analytics/conversion`, {
       method: 'POST',
@@ -200,6 +241,7 @@ export class AnalyticsSDK {
    * Send session heartbeat
    */
   async sendHeartbeat(): Promise<void> {
+    if (this.suppressed) return;
     try {
       const baseUrl = this.config.apiUrl.replace(/\/$/, '');
       await fetch(`${baseUrl}/analytics/session/heartbeat`, {

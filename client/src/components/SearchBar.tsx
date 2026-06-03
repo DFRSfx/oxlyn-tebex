@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 import { Package } from '../types';
 import { formatCategoryName } from '../utils/helpers';
+import { useCurrency } from '../context/CurrencyContext';
 
 interface SearchBarProps {
   packages: Package[];
@@ -9,6 +10,7 @@ interface SearchBarProps {
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({ packages, onSelectPackage }) => {
+  const { format: formatPrice } = useCurrency();
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [filteredPackages, setFilteredPackages] = useState<Package[]>([]);
@@ -119,12 +121,12 @@ const SearchBar: React.FC<SearchBarProps> = ({ packages, onSelectPackage }) => {
                     )}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-orange-500">
-                        {pkg.price.toFixed(2)} EUR
+                        {formatPrice(pkg.price)}
                       </span>
                       {pkg.originalPrice > pkg.price && (
                         <>
                           <span className="text-xs text-gray-500 line-through">
-                            {pkg.originalPrice.toFixed(2)} EUR
+                            {formatPrice(pkg.originalPrice)}
                           </span>
                           <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-semibold">
                             -{discount}%

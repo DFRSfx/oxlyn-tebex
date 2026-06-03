@@ -1,23 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, ShoppingCart, Check, Home, Shield, Zap, Server, Info, FileText, ZoomIn, X } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, ShoppingCart, Check,
+  Shield, ZoomIn, X, Package as PackageIcon, Puzzle, Crown,
+  ArrowLeft, ChevronDown, ArrowUpRight, BookOpen, GitBranch, AlignLeft,
+  Sparkles,
+} from 'lucide-react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { Package } from '../types';
 import { useTebex } from '../context/TebexContext';
-import { useDocumentation } from '../hooks/useDocumentation';
-import DocumentationTabs from '../components/DocumentationTabs';
+import { useCurrency } from '../context/CurrencyContext';
 import { API_URL } from '../config/api';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { useSEO } from '../hooks/useSEO';
+import { isBundle, findSubscriptionPackage, isVanguard, VANGUARD_DOCS_URL, OXLYN_DOCS_URL } from '../utils/isBundle';
+import { vanguardBaseName, vanguardDisplayName } from '../utils/packageDedupe';
+import { findVanguardUpgrade } from '../utils/vanguardCrossSell';
+import { bundlesService, BundleResourceEntry } from '../services/bundlesService';
+import OptimizedImage from '../components/OptimizedImage';
+import RecentPaymentsSection from '../components/RecentPaymentsSection';
+import CustomerReviewsSection from '../components/CustomerReviewsSection';
+import LivePreview from '../components/LivePreview';
+import { getLivePreview } from '../components/livePreviews';
 
 interface PackageDetailsPageProps {
   packages: Package[];
+  isLoadingPackages?: boolean;
 }
 
-const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => {
+const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages, isLoadingPackages }) => {
   const { productSlug } = useParams<{ productSlug: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { isLoggedIn, addToCart, isInCart, login } = useTebex();
+  const { isLoggedIn, addToCart, isInCart, openLoginModal } = useTebex();
+  const { format: formatEUR } = useCurrency();
   const { trackPackageView } = useAnalytics();
   const [isAdding, setIsAdding] = useState(false);
   const [currentProductImageIndex, setCurrentProductImageIndex] = useState(0);
@@ -37,36 +53,105 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
     }) ||
     statePackage;
 
-  const getBaseName = (name: string) => {
-    return name
+  // Brand-aware naming. We split the concerns:
+  //   • `matchKey`  — used only to group escrow/unlocked variants of the
+  //     same product. Vanguard needs the aggressive `vanguardBaseName`
+  //     because the SKU names are inconsistent ("Advanced Wallet System"
+  //     escrow vs "Wallet System [UNLOCKED]").
+  //   • `getDisplayName` — used everywhere the user reads the name.
+  //     Vanguard uses `vanguardDisplayName` which keeps the casing + the
+  //     "Advanced" brand prefix and only hides the `[UNLOCKED]` SKU
+  //     marker. Oxlyn keeps its parenthesised-suffix strip.
+  const pkgIsVanguard = selectedPackage ? isVanguard(selectedPackage) : false;
+  const oxlynStripVariants = (name: string) =>
+    name
       .replace(/\s*\(OPEN-SOURCE\)/gi, '')
       .replace(/\s*\(ESCROWED\)/gi, '')
       .replace(/\s*\(Open Source\)/gi, '')
       .replace(/\s*\(Escrow\)/gi, '')
       .trim();
-  };
+  const matchKey = (name: string) =>
+    pkgIsVanguard ? vanguardBaseName(name) : oxlynStripVariants(name);
+  const getBaseName = (name: string) =>
+    pkgIsVanguard ? vanguardDisplayName(name) : oxlynStripVariants(name);
 
   const packageVariants = selectedPackage
     ? packages.filter(pkg => {
-        const baseName1 = getBaseName(pkg.name);
-        const baseName2 = getBaseName(selectedPackage.name);
-        return baseName1 === baseName2;
+        // Variants must belong to the same brand — otherwise an Oxlyn
+        // package with the same base word as a Vanguard one would leak
+        // across the picker.
+        if (isVanguard(pkg) !== pkgIsVanguard) return false;
+        return matchKey(pkg.name) === matchKey(selectedPackage.name);
       })
     : [];
 
-  const openSourceVersion = packageVariants.find(
-    pkg => pkg.name.toLowerCase().includes('open-source') ||
-           pkg.name.toLowerCase().includes('opensource') ||
-           pkg.name.toLowerCase().includes('open source')
-  );
+  // For Vanguard, the "unlocked" build plays the role of the open-source
+  // variant — same UX (Add to Cart routes to the open-source SKU).
+  const openSourceVersion = pkgIsVanguard
+    ? packageVariants.find(pkg => /\[\s*unlocked\s*\]/i.test(pkg.name))
+    : packageVariants.find(
+        pkg => pkg.name.toLowerCase().includes('open-source') ||
+               pkg.name.toLowerCase().includes('opensource') ||
+               pkg.name.toLowerCase().includes('open source')
+      );
 
-  const escrowVersion = packageVariants.find(
-    pkg => (pkg.name.toLowerCase().includes('escrow') ||
-            pkg.name.toLowerCase().includes('escrowed')) &&
-           !pkg.name.toLowerCase().includes('open')
-  ) || packageVariants.find(pkg => pkg !== openSourceVersion);
+  // If this Vanguard package has a known OXLYN successor (e.g. Backpack V2
+  // → Backpack V3, OBD Tablet → ECU Tuning, Crutch System), surface a
+  // CTA pointing at the OXLYN version. Logic lives in `vanguardCrossSell`
+  // so the mapping table stays out of the render code.
+  const vanguardUpgrade = pkgIsVanguard
+    ? findVanguardUpgrade(selectedPackage, packages)
+    : null;
+
+  // For Vanguard the escrow variant is everything that isn't tagged
+  // [UNLOCKED]. For Oxlyn we keep the original heuristic.
+  const escrowVersion = pkgIsVanguard
+    ? packageVariants.find(pkg => !/\[\s*unlocked\s*\]/i.test(pkg.name))
+    : packageVariants.find(
+        pkg => (pkg.name.toLowerCase().includes('escrow') ||
+                pkg.name.toLowerCase().includes('escrowed')) &&
+               !pkg.name.toLowerCase().includes('open')
+      ) || packageVariants.find(pkg => pkg !== openSourceVersion);
 
   const [selectedVersion, setSelectedVersion] = useState<Package | undefined>(selectedPackage);
+
+  // Per-product SEO + Product JSON-LD for rich Google results
+  const seoTitle = selectedPackage
+    ? `${getBaseName(selectedPackage.name)} — FiveM Script`
+    : 'FiveM Script';
+  const seoDescription = selectedPackage
+    ? `${getBaseName(selectedPackage.name)} for FiveM. ${selectedPackage.description?.slice(0, 140) || 'Premium script optimized for QBCore, ESX & QBox servers.'}`
+    : 'Premium FiveM script optimized for QBCore, ESX, and QBox servers.';
+  const productSlugForCanonical = selectedPackage
+    ? selectedPackage.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    : (productSlug || '');
+  const productJsonLd = selectedPackage
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: getBaseName(selectedPackage.name),
+        description: selectedPackage.description || '',
+        image: selectedPackage.image,
+        sku: String(selectedPackage.tebexPackageId ?? selectedPackage.id),
+        brand: { '@type': 'Brand', name: 'OXLYN Software' },
+        offers: {
+          '@type': 'Offer',
+          priceCurrency: 'EUR',
+          price: selectedPackage.price.toFixed(2),
+          availability: 'https://schema.org/InStock',
+          url: `https://oxlynsoftware.com/product/${productSlugForCanonical}`,
+          seller: { '@type': 'Organization', name: 'OXLYN Software' },
+        },
+      }
+    : undefined;
+  useSEO({
+    title: seoTitle,
+    description: seoDescription,
+    canonical: `/product/${productSlugForCanonical}`,
+    image: selectedPackage?.image,
+    type: 'product',
+    jsonLd: productJsonLd,
+  });
 
   useEffect(() => {
     if (selectedPackage && packageVariants.length > 0) {
@@ -99,27 +184,45 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
 
   const fromScripts = location.state?.fromScripts || false;
   const baseName = selectedPackage ? getBaseName(selectedPackage.name) : '';
-  const { documentation, loading: docsLoading, error: _docsError } = useDocumentation(baseName);
+
+  // Interactive, browser-playable "Live Preview" of the product's in-game UI.
+  // Resolved from the registry in `livePreviews.tsx`, gated to the standalone
+  // OXLYN SKUs (Vanguard variants + bundles excluded there).
+  const livePreview = getLivePreview(selectedPackage?.name, {
+    isVanguard: pkgIsVanguard,
+    isBundle: isBundle(selectedPackage),
+  });
+
+  const packageIsBundle = isBundle(selectedPackage);
+  const [bundleContents, setBundleContents] = useState<BundleResourceEntry[]>([]);
+  const [bundleLoading, setBundleLoading] = useState(false);
 
   useEffect(() => {
-    if (documentation) {
-      console.log('📚 Full Documentation Object:', documentation);
-      console.log('📚 Version:', documentation.version);
-      console.log('📚 Compatibility:', documentation.compatibility);
-      console.log('📚 Subsections (Tabs):', documentation.subsections);
-      if (documentation.subsections) {
-        documentation.subsections.forEach((subsection, i) => {
-          console.log(`📑 Subsection ${i}:`, subsection.title);
-          if (subsection.sections) {
-            subsection.sections.forEach((section, j) => {
-              console.log(`  📄 Section ${j}:`, section.title, '(type:', section.type + ')');
-              console.log(`  📝 Content preview:`, section.content?.substring(0, 200));
-            });
-          }
-        });
-      }
+    if (!packageIsBundle || !selectedPackage?.tebexPackageId) {
+      setBundleContents([]);
+      return;
     }
-  }, [documentation]);
+    let cancelled = false;
+    setBundleLoading(true);
+    bundlesService
+      .fetchForBundle(selectedPackage.tebexPackageId)
+      .then((entries) => {
+        if (!cancelled) setBundleContents(entries);
+      })
+      .finally(() => {
+        if (!cancelled) setBundleLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [packageIsBundle, selectedPackage?.tebexPackageId]);
+
+  // Resolve each bundle content entry to the full Package (if still available
+  // in the catalog) so we can show its image and link to its details page.
+  const bundleResourcePackages = bundleContents.map((entry) => {
+    const pkg = packages.find((p) => p.tebexPackageId === entry.resourceTebexId);
+    return { entry, pkg };
+  });
 
   useEffect(() => {
     if (!selectedPackage?.name) return;
@@ -144,6 +247,16 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
   }, [selectedPackage?.name]);
 
   if (!selectedPackage || !selectedVersion) {
+    // Packages still streaming in from Tebex — show a lightweight skeleton
+    // instead of redirecting, otherwise direct links / refreshes on a product
+    // URL would bounce the user back home before the catalog finishes loading.
+    if (isLoadingPackages || packages.length === 0) {
+      return (
+        <div className="min-h-screen flex items-center justify-center text-zinc-500 text-sm">
+          Loading product…
+        </div>
+      );
+    }
     navigate('/');
     return null;
   }
@@ -212,58 +325,93 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
     };
   }, [isLightboxOpen, currentProductImageIndex, mediaItems.length]);
 
-  return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 relative z-10 font-sans selection:bg-primary-orange/30">
-      {/* Same background as homepage */}
-      <div className="fixed inset-0 grid-background opacity-20 pointer-events-none" />
-      <div className="fixed inset-0 hero-gradient-enhanced pointer-events-none" />
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="geometric-shape geometric-shape-1" />
-        <div className="geometric-shape geometric-shape-2" />
-        <div className="geometric-shape geometric-shape-3" />
-      </div>
+  // Monthly subscription SKU surfaced as a third "version" option below the
+  // Escrow / Open Source choices. When the user picks it, the Add to Cart
+  // button switches to subscription mode and routes them to /cart after the
+  // sub package is added. Vanguard packages opt out — the legacy catalogue
+  // isn't included in the OXLYN All-Access subscription.
+  const monthlySubscription = pkgIsVanguard
+    ? undefined
+    : findSubscriptionPackage('monthly', packages);
+  const isSubscriptionSelected =
+    !!monthlySubscription &&
+    selectedVersion?.tebexPackageId === monthlySubscription.tebexPackageId;
 
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-20 sm:py-28 lg:py-32 relative z-10">
-        
-        {/* Header Section */}
-        <div className="mb-6 sm:mb-8">
-          <nav aria-label="Breadcrumb" className="mb-3 sm:mb-4">
-            <ol className="flex items-center gap-2 text-xs sm:text-sm text-zinc-500 flex-wrap">
-              <li className="flex items-center gap-2">
-                <button onClick={() => navigate(-1)} className="hover:text-zinc-300 transition-colors">
-                  <Home className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </button>
-                <ChevronRight className="h-3 w-3" />
-              </li>
-              {fromScripts && (
-                <li className="flex items-center gap-2">
-                  <button onClick={() => navigate('/scripts')} className="hover:text-zinc-300 transition-colors">Scripts</button>
-                  <ChevronRight className="h-3 w-3" />
-                </li>
-              )}
-              <li className="text-zinc-300 font-medium truncate max-w-[180px] sm:max-w-none">{baseName}</li>
-            </ol>
-          </nav>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white tracking-tight break-words">{baseName}</h1>
-          <div className="flex gap-1.5 sm:gap-2 mt-3 sm:mt-4 flex-wrap">
-            {selectedPackage.frameworks.map((framework) => (
-              <span key={framework} className="px-2.5 sm:px-3 py-1 rounded bg-zinc-800 border border-zinc-700 text-[10px] sm:text-xs font-bold text-zinc-300 uppercase tracking-wider">
-                {framework}
-              </span>
-            ))}
-          </div>
-        </div>
+  // Unified add-to-cart handler used by the big white CTA above.
+  const handleAddToCart = async () => {
+    if (!isLoggedIn) { openLoginModal(); return; }
+    if (inCart || !selectedVersion?.tebexPackageId) return;
+    setIsAdding(true);
+    const ok = await addToCart({
+      id: selectedVersion.tebexPackageId,
+      name: selectedVersion.name,
+      price: selectedVersion.price,
+      currency: 'EUR',
+      image: selectedVersion.image,
+      qty: 1,
+      category: selectedVersion.category,
+    });
+    setIsAdding(false);
+    if (ok && isSubscriptionSelected) navigate('/cart');
+  };
+
+  // List of variants this product ships with — used both for the "Package
+  // Type" subtitle and the picker inside that section. Vanguard labels the
+  // open-source variant as "Unlocked" since that's how the SKUs ship.
+  const openSourceLabel = pkgIsVanguard ? 'Unlocked' : 'Open Source';
+  const openSourceSubLabel = pkgIsVanguard
+    ? 'Full code · no escrow'
+    : 'Full code · edit anything';
+  const variantSummary = [
+    escrowVersion && 'Escrow',
+    openSourceVersion && openSourceLabel,
+    monthlySubscription && 'Subscription',
+  ].filter(Boolean).join(', ');
+
+  const discountPct = selectedVersion.originalPrice > selectedVersion.price && selectedVersion.price > 0
+    ? Math.round(((selectedVersion.originalPrice - selectedVersion.price) / selectedVersion.originalPrice) * 100)
+    : 0;
+  const isFree = selectedVersion.price === 0;
+
+  // Brand-specific docs root. Vanguard scripts have their own docs domain
+  // (different stack from the OXLYN catalogue), so the "Documentation"
+  // row in the right column has to swap when viewing a Vanguard package.
+  const docsBase = pkgIsVanguard ? VANGUARD_DOCS_URL : OXLYN_DOCS_URL;
+  const docsUrl = `${docsBase}${productSlugForCanonical || ''}`;
+
+  return (
+    <div className="min-h-screen text-zinc-100 relative z-10 font-sans selection:bg-primary-orange/30">
+      {/* No local background — global .page-gradient + grid-overlay + noise-overlay
+          (set in App.tsx) flow through unchanged */}
+
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-12 sm:py-16 lg:py-20 relative z-10">
+
+        {/* Back button — matches the reference design's "← Back to Products" */}
+        <button
+          onClick={() => navigate(fromScripts ? '/scripts' : -1)}
+          className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors mb-6 sm:mb-8"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to <b className="text-white">Products</b></span>
+        </button>
 
         <div className="grid lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-12">
           
-          {/* LEFT COLUMN - Media & Features */}
-          <div className="lg:col-span-8 space-y-6 sm:space-y-8">
+          {/* LEFT COLUMN — Media gallery. Title/price/CTA/sections live in
+              the right column to match the reference design's text-led
+              right side over the media-led left side. */}
+          <div className="lg:col-span-7 space-y-5 min-w-0">
             {/* Main Media Player */}
-            <div className="rounded-xl overflow-hidden bg-black border border-zinc-800 shadow-2xl shadow-black/50 group relative">
+            <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl shadow-black/50 group relative">
               <div className="aspect-video relative">
-                <img
+                <OptimizedImage
                   src={mediaItems[currentProductImageIndex]?.url ?? selectedPackage.image}
                   alt={selectedPackage.name}
+                  width={1100}
+                  quality={75}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   className="w-full h-full object-cover cursor-zoom-in"
                   onClick={() => setIsLightboxOpen(true)}
                 />
@@ -271,7 +419,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                 {/* Expand button — appears on hover */}
                 <button
                   onClick={() => setIsLightboxOpen(true)}
-                  className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/10 hover:border-white/30 rounded-lg text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105"
+                  className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-black/85 hover:bg-black/95 border border-white/10 hover:border-white/30 rounded-lg text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105"
                   aria-label="Expand image"
                   title="Click to expand"
                 >
@@ -287,13 +435,13 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                   <>
                     <button
                       onClick={prevProductImage}
-                      className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-black/60 backdrop-blur-sm border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                      className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-black/75 border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                     <button
                       onClick={nextProductImage}
-                      className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-black/60 backdrop-blur-sm border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                      className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-black/75 border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white hover:text-black transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
@@ -302,247 +450,300 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
               </div>
             </div>
 
-            {/* Thumbnails — smaller on mobile, horizontally scrollable */}
+            {/* Thumbnails — wrap to the next row instead of horizontal scroll
+                so all images stay visible without a scrollbar. */}
             {mediaItems.length > 1 && (
-              <div className="flex gap-2 sm:gap-3 mt-3 sm:mt-4 overflow-x-auto py-2 px-1 scrollbar-thin scrollbar-thumb-zinc-700 -mx-1">
+              <div className="flex flex-wrap gap-2 sm:gap-3 py-1">
                 {mediaItems.map((item, index) => (
                   <button
                     key={index}
                     onClick={() => changeImage(index)}
-                    className={`relative aspect-video rounded-lg border-2 transition-all duration-300 hover:shadow-xl flex-shrink-0 w-20 sm:w-28 lg:w-36 ${
+                    className={`relative aspect-video rounded-lg border-2 transition-all duration-300 flex-shrink-0 w-20 sm:w-24 lg:w-28 ${
                       index === currentProductImageIndex
-                        ? 'border-primary-orange shadow-sm shadow-primary-orange/40 scale-105 ring-2 ring-primary-orange/30 opacity-100'
-                        : 'border-white/10 shadow-sm opacity-60 hover:opacity-100 hover:scale-105 hover:border-white/30 hover:shadow-white/10'
+                        ? 'border-white opacity-100'
+                        : 'border-white/10 opacity-55 hover:opacity-100 hover:border-white/30'
                     }`}
                   >
-                    <img src={item.url} alt="" className="w-full h-full object-cover rounded-md" />
+                    <OptimizedImage src={item.url} alt="" width={144} className="w-full h-full object-cover rounded-md" />
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Key Features */}
-            <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 sm:p-6 md:p-8">
-              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-primary-orange" />
-                Key Features
-              </h3>
+            {/* Bundle Contents — shown only when the package is a bundle.
+                Replaces Key Features with a modern grid of the resources
+                this bundle combines, configurable per-bundle from the admin. */}
+            {packageIsBundle && (
+              <div className="relative bg-gradient-to-br from-primary-orange/10 via-zinc-900/40 to-zinc-900/30 border border-primary-orange/20 rounded-xl p-4 sm:p-6 md:p-8 overflow-hidden">
+                <div className="absolute -top-20 -right-20 w-56 h-56 bg-primary-orange/20 blur-3xl rounded-full pointer-events-none" />
+                <div className="absolute -bottom-24 -left-16 w-64 h-64 bg-amber-500/10 blur-3xl rounded-full pointer-events-none" />
 
-              <div className="grid md:grid-cols-2 gap-4">
-                {(() => {
-                  let features: string[] = [];
-
-                  if (documentation?.subsections) {
-                    const aboutSubsection = documentation.subsections.find(sub =>
-                      sub.title.toLowerCase().includes('about')
-                    );
-
-                    if (aboutSubsection?.sections) {
-                      const overviewSection = aboutSubsection.sections.find(s =>
-                        s.title.toLowerCase().includes('overview') && s.type === 'text'
-                      );
-
-                      if (overviewSection?.content) {
-                        const content = overviewSection.content;
-                        const featuresMatch = content.match(/Features?:([\s\S]*?)(?=\n\n|$)/i);
-
-                        if (featuresMatch && featuresMatch[1]) {
-                          features = featuresMatch[1]
-                            .split(/\n/)
-                            .map((line: string) => line.trim())
-                            .filter((line: string) => line.startsWith('•') || line.startsWith('-'))
-                            .map((line: string) => line.replace(/^[•\-]\s*/, '').trim())
-                            .filter(Boolean);
-                        }
-                      }
-                    }
-                  }
-
-                  if (features.length === 0) {
-                    features = [
-                      "Optimized for 0.00ms resmon",
-                      "Fully Configurable via config.lua",
-                      "Secure server-side validation",
-                      "Clean and modern User Interface",
-                      "Compatible with ESX & QB-Core",
-                      "Regular updates & support"
-                    ];
-                  }
-
-                  return features.map((feature, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg hover:bg-white/5 transition-colors">
-                      <div className="mt-1 w-5 h-5 rounded-full bg-primary-orange/20 flex items-center justify-center shrink-0">
-                        <Check className="w-3 h-3 text-primary-orange" />
-                      </div>
-                      <span className="text-zinc-300 text-sm font-medium">{feature}</span>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-           
-            {/* Documentation Tabs */}
-            {(docsLoading || documentation) && (
-              <div className="pt-6 sm:pt-8 border-t border-zinc-800">
-                <div className="w-full mb-6 sm:mb-8">
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4">Detailed Breakdown</h2>
-                  <div className="w-16 h-1 bg-primary-orange rounded-full"></div>
-                </div>
-
-                {docsLoading ? (
-                  <div className="h-40 flex items-center justify-center text-zinc-500 bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800">Loading details...</div>
-                ) : (
-                  <div className="bg-[#0e0e10] border border-zinc-800 rounded-2xl p-2">
-                    <DocumentationTabs resource={documentation!} />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 rounded-md bg-primary-orange/20 border border-primary-orange/40 text-[10px] font-black tracking-[0.2em] text-primary-orange uppercase">
+                      Bundle
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {bundleResourcePackages.length > 0
+                        ? `${bundleResourcePackages.length} resource${bundleResourcePackages.length === 1 ? '' : 's'} combined`
+                        : 'Multi-resource package'}
+                    </span>
                   </div>
-                )}
+                  <h3 className="text-xl sm:text-2xl font-black text-white mb-1 flex items-center gap-2">
+                    <PackageIcon className="w-5 h-5 text-primary-orange" />
+                    What's inside
+                  </h3>
+                  <p className="text-sm text-zinc-400 mb-6">
+                    This bundle combines the following premium resources into a single purchase.
+                  </p>
+
+                  {bundleLoading ? (
+                    <div className="h-28 flex items-center justify-center text-zinc-500 text-sm">
+                      Loading bundle contents…
+                    </div>
+                  ) : bundleResourcePackages.length === 0 ? (
+                    <div className="flex items-center gap-3 p-4 rounded-lg bg-zinc-900/60 border border-dashed border-zinc-700 text-sm text-zinc-400">
+                      <Puzzle className="w-5 h-5 text-zinc-500 flex-shrink-0" />
+                      <span>Bundle contents will be announced soon. Stay tuned!</span>
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+                      {bundleResourcePackages.map(({ entry, pkg }, i) => {
+                        const displayName = pkg
+                          ? getBaseName(pkg.name)
+                          : entry.resourceName || `Resource #${entry.resourceTebexId}`;
+                        const slug = pkg
+                          ? pkg.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+                          : null;
+                        const onClick = () => {
+                          if (pkg && slug) {
+                            navigate(`/product/${slug}`, { state: { package: pkg } });
+                          }
+                        };
+                        return (
+                          <div
+                            key={entry.id}
+                            onClick={onClick}
+                            className={`group relative flex items-center gap-3 p-3 sm:p-4 rounded-xl bg-zinc-900/70 border border-zinc-800 hover:border-primary-orange/50 transition-all ${
+                              pkg ? 'cursor-pointer hover:bg-zinc-900' : ''
+                            }`}
+                          >
+                            <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
+                              {pkg?.image ? (
+                                <OptimizedImage src={pkg.image} alt={displayName} width={64} className="w-full h-full object-cover" />
+                              ) : (
+                                <Puzzle className="w-6 h-6 text-zinc-600" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[10px] font-bold text-primary-orange uppercase tracking-wider">
+                                  #{i + 1}
+                                </span>
+                                {pkg && (
+                                  <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                                    View →
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm sm:text-base font-bold text-white truncate">
+                                {displayName}
+                              </div>
+                              {pkg?.description && (
+                                <div className="text-[11px] text-zinc-500 line-clamp-2 mt-0.5">
+                                  {pkg.description}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-orange/10 border border-primary-orange/30 flex items-center justify-center">
+                              <Check className="w-4 h-4 text-primary-orange" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+           
           </div>
 
-          {/* RIGHT COLUMN - Purchase & Info */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* Purchase Card */}
-            <div className="bg-[#111] border border-zinc-800 rounded-xl p-4 sm:p-6 lg:sticky lg:top-24 shadow-xl">
-              <div className="mb-6">
-                <h2 className="text-lg font-semibold text-white mb-4">Select Version</h2>
-                
-                <div className="space-y-3">
-                  {escrowVersion && (
-                    <div 
-                      onClick={() => setSelectedVersion(escrowVersion)}
-                      className={`cursor-pointer group relative p-4 rounded-lg border-2 transition-all duration-200 ${
-                        selectedVersion?.tebexPackageId === escrowVersion.tebexPackageId
-                          ? 'border-white bg-zinc-900'
-                          : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-600'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="text-white font-bold text-base">Escrow</div>
-                          <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
-                            <Shield className="w-3 h-3" /> Protected Code
-                          </div>
-                        </div>
-                        <div className="text-xl font-bold text-white">
-                          {escrowVersion.price === 0 ? 'Free' : `€${escrowVersion.price.toFixed(2)}`}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {openSourceVersion && (
-                    <div 
-                      onClick={() => setSelectedVersion(openSourceVersion)}
-                      className={`cursor-pointer group relative p-4 rounded-lg border-2 transition-all duration-200 ${
-                        selectedVersion?.tebexPackageId === openSourceVersion.tebexPackageId
-                          ? 'border-white bg-zinc-900'
-                          : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-600'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="text-white font-bold text-base">Open Source</div>
-                          <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
-                            <FileText className="w-3 h-3" /> Full Code Access
-                          </div>
-                        </div>
-                        <div className="text-xl font-bold text-white">
-                          {openSourceVersion.price === 0 ? 'Free' : `€${openSourceVersion.price.toFixed(2)}`}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+          {/* RIGHT COLUMN — Title, price, CTA, collapsible sections */}
+          <div className="lg:col-span-5 space-y-5 min-w-0">
+            <h1 className="text-2xl sm:text-3xl lg:text-[2.05rem] font-black text-white tracking-tight leading-[1.15] break-words">
+              {baseName}
+            </h1>
+
+            {!packageIsBundle && (
+              <div className="flex flex-wrap gap-2">
+                {(pkgIsVanguard
+                  ? [
+                      { src: '/esx.png',    label: 'ESX' },
+                      { src: '/qbcore.png', label: 'QBCore' },
+                    ]
+                  : [
+                      { src: '/esx.png',    label: 'ESX' },
+                      { src: '/qbcore.png', label: 'QBCore' },
+                      { src: '/qbox.png',   label: 'QBox' },
+                    ]
+                ).map((fw) => (
+                  <span key={fw.label} className="framework-badge">
+                    <img src={fw.src} alt="" loading="lazy" decoding="async" width={16} height={16} className="framework-badge-icon" />
+                    <span>{fw.label}</span>
+                  </span>
+                ))}
               </div>
+            )}
 
-              <div className="h-px bg-zinc-800 my-6"></div>
+            {/* Price row — current price + crossed-out + discount badge */}
+            <div className="flex items-baseline gap-2.5 flex-wrap pt-1">
+              <span className="text-3xl sm:text-[2.3rem] font-black text-white tabular-nums leading-none">
+                {isFree ? 'Free' : formatEUR(selectedVersion.price)}
+              </span>
+              {discountPct > 0 && !isFree && (
+                <>
+                  <span className="text-zinc-500 text-base line-through tabular-nums">
+                    {formatEUR(selectedVersion.originalPrice)}
+                  </span>
+                  <span className="px-2 py-1 rounded-md bg-red-600 text-white text-[13px] font-bold tracking-wide leading-none">
+                    -{discountPct}%
+                  </span>
+                </>
+              )}
+            </div>
 
+            {/* Vanguard → OXLYN upgrade CTA. Only renders when the
+                current Vanguard SKU has a mapped OXLYN successor
+                (Backpack V2 → V3, OBD Tablet → ECU Tuning, etc.). The
+                button jumps straight to the OXLYN package's details
+                page using the same slug route the catalogue uses. */}
+            {vanguardUpgrade && (
               <button
-                onClick={async () => {
-                  if (!isLoggedIn) { login(); return; }
-                  if (!inCart && selectedVersion.tebexPackageId) {
-                    setIsAdding(true);
-                    await addToCart({
-                      id: selectedVersion.tebexPackageId,
-                      name: selectedVersion.name,
-                      price: selectedVersion.price,
-                      currency: 'EUR',
-                      image: selectedVersion.image,
-                      qty: 1,
-                      category: selectedVersion.category,
-                    });
-                    setIsAdding(false);
-                  }
+                type="button"
+                onClick={() => {
+                  const slug = vanguardUpgrade.upgrade.name
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/(^-|-$)/g, '');
+                  navigate(`/product/${slug}`, {
+                    state: { package: vanguardUpgrade.upgrade },
+                  });
                 }}
-                disabled={inCart || isAdding}
-                className={`w-full h-14 text-base font-bold uppercase tracking-wide rounded hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2 
-                  ${inCart 
-                    ? 'bg-zinc-800 text-zinc-300 cursor-default' 
-                    : 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]'
-                  }`}
+                className="vanguard-upgrade-cta"
+                aria-label={`${vanguardUpgrade.ctaLabel} — open ${vanguardUpgrade.upgrade.name}`}
               >
-                {inCart ? (
-                  <><Check className="w-5 h-5" /> In Cart</>
-                ) : isAdding ? (
-                  <><ShoppingCart className="w-5 h-5 animate-bounce" /> Processing...</>
-                ) : (
-                  <><ShoppingCart className="w-5 h-5" /> Add to Cart</>
-                )}
+                <span className="vanguard-upgrade-cta-icon" aria-hidden="true">
+                  <Sparkles size={16} strokeWidth={2.4} />
+                </span>
+                <span className="vanguard-upgrade-cta-text">
+                  <span className="vanguard-upgrade-cta-label">{vanguardUpgrade.ctaLabel}</span>
+                  {vanguardUpgrade.ctaSubLabel && (
+                    <span className="vanguard-upgrade-cta-sub">{vanguardUpgrade.ctaSubLabel}</span>
+                  )}
+                </span>
+                <span className="vanguard-upgrade-cta-action">
+                  Click here <ArrowUpRight size={14} strokeWidth={2.5} />
+                </span>
               </button>
-              
-              <div className="mt-4 text-center">
-                <p className="text-xs text-zinc-500">Instant delivery via email & Keymaster</p>
-              </div>
+            )}
+
+            {/* Add to Cart — primary CTA at the top of the right column */}
+            <button
+              onClick={handleAddToCart}
+              disabled={inCart || isAdding}
+              className={`w-full h-12 rounded-xl font-bold text-[15px] flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                inCart
+                  ? 'bg-zinc-800 text-zinc-300'
+                  : isSubscriptionSelected
+                    ? 'bg-gradient-to-r from-red-500 to-red-700 text-white shadow-[0_8px_22px_-6px_rgba(220,60,60,0.55)]'
+                    : 'bg-white text-black hover:bg-zinc-100'
+              }`}
+            >
+              {inCart ? (
+                <><Check className="w-4 h-4" /> In Cart</>
+              ) : isAdding ? (
+                <><ShoppingCart className="w-4 h-4 animate-bounce" /> Processing…</>
+              ) : isSubscriptionSelected ? (
+                <><Crown className="w-4 h-4" /> Subscribe — {formatEUR(monthlySubscription?.price ?? 0)}/mo</>
+              ) : (
+                <>Add to Cart</>
+              )}
+            </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[12px] text-zinc-400">
+              <span className="flex items-center gap-2">
+                <BarChart3Tiny />
+                Lifetime updates · zero subscription
+              </span>
+              <span className="flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-zinc-500" />
+                Instant delivery via Cfx Keymaster
+              </span>
             </div>
 
-            {/* Description Card */}
-            <div className="bg-[#111] border border-zinc-800 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-white mb-3">Description</h3>
-              <div className="prose prose-invert prose-sm max-w-none text-zinc-400 leading-relaxed">
-                <p>{selectedPackage.fullDescription}</p>
-                
-                {!selectedPackage.fullDescription && (
-                  <p>Enhance your server with this premium resource. Featuring high performance, easy configuration, and professional support.</p>
-                )}
-              </div>
-            </div>
+            {/* Collapsible sections — Documentation is a link-style row,
+                Package Type / Description expand inline. */}
+            <div className="space-y-2 pt-2">
+              <PDLink
+                icon={BookOpen}
+                label="Documentation"
+                onClick={() => window.open(docsUrl, '_blank')}
+              />
+              <PDAccordion icon={GitBranch} label="Package Type" sublabel={variantSummary} defaultOpen>
+                <div className="space-y-2.5 pt-3">
+                  {escrowVersion && (
+                    <VariantPick
+                      label="Escrow"
+                      sublabel="Protected · Cfx escrow"
+                      price={escrowVersion.price}
+                      selected={selectedVersion?.tebexPackageId === escrowVersion.tebexPackageId}
+                      onSelect={() => setSelectedVersion(escrowVersion)}
+                    />
+                  )}
+                  {openSourceVersion && (
+                    <VariantPick
+                      label={openSourceLabel}
+                      sublabel={openSourceSubLabel}
+                      price={openSourceVersion.price}
+                      selected={selectedVersion?.tebexPackageId === openSourceVersion.tebexPackageId}
+                      onSelect={() => setSelectedVersion(openSourceVersion)}
+                    />
+                  )}
+                  {monthlySubscription && (
+                    <VariantPick
+                      label="Subscription"
+                      sublabel="Access to all scripts · cancel anytime"
+                      price={monthlySubscription.price}
+                      priceSuffix="/ mo"
+                      accent
+                      selected={selectedVersion?.tebexPackageId === monthlySubscription.tebexPackageId}
+                      onSelect={() => setSelectedVersion(monthlySubscription)}
+                    />
+                  )}
+                </div>
+              </PDAccordion>
 
-            {/* Info Card */}
-            <div className="bg-[#111] border border-zinc-800 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Product Info</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-zinc-800">
-                  <span className="text-sm text-zinc-500 flex items-center gap-2">
-                    <Server className="w-4 h-4" /> Compatibility
-                  </span>
-                  <span className="text-xs font-medium text-white text-right max-w-[60%] truncate">
-                    {documentation?.compatibility && documentation.compatibility.length > 0
-                      ? documentation.compatibility.join(' / ')
-                      : 'QBCore / ESX'}
-                  </span>
+              <PDAccordion icon={AlignLeft} label="Description">
+                <div className="pt-3 text-sm text-zinc-400 leading-relaxed break-words">
+                  {selectedPackage.fullDescription || selectedPackage.description ||
+                    'Enhance your server with this premium resource. Featuring high performance, easy configuration, and professional support.'}
                 </div>
-                <div className="flex justify-between items-center pb-3 border-b border-zinc-800">
-                  <span className="text-sm text-zinc-500 flex items-center gap-2">
-                    <Info className="w-4 h-4" /> Version
-                  </span>
-                  <span className="text-sm font-medium text-white">
-                    {documentation?.version
-                      ? `${documentation.version} (Latest)`
-                      : '1.0.0 (Latest)'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-500 flex items-center gap-2">
-                    <Shield className="w-4 h-4" /> Support
-                  </span>
-                  <span className="text-sm font-medium text-green-400">Active</span>
-                </div>
-              </div>
+              </PDAccordion>
             </div>
           </div>
         </div>
+
+        {/* Live Preview — interactive, browser-playable replica of the
+            product's in-game UI. Sits below the gallery, above Recent
+            Payments. Only rendered for products that ship a demo. */}
+        {livePreview && <LivePreview config={livePreview} />}
+
+        {/* Recent purchases + reviews — global content, identical for every
+            visitor; the timestamps in Recent Payments adapt to the viewer's
+            local clock client-side. */}
+        <RecentPaymentsSection />
+        <CustomerReviewsSection />
       </div>
 
       {/* ============================================================ */}
@@ -600,7 +801,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
           {mediaItems.length > 1 && (
             <div
               style={{ position: 'absolute', top: '24px', left: '24px', zIndex: 10 }}
-              className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-white text-sm font-medium"
+              className="px-4 py-2 bg-white/10 border border-white/10 rounded-full text-white text-sm font-medium"
             >
               {currentProductImageIndex + 1} <span className="text-white/40">/</span> {mediaItems.length}
             </div>
@@ -614,17 +815,21 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                 prevProductImage();
               }}
               style={{ position: 'absolute', left: '24px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}
-              className="w-14 h-14 bg-white/5 hover:bg-white/15 backdrop-blur-md border border-white/10 hover:border-white/30 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
+              className="w-14 h-14 bg-white/10 hover:bg-white/20 border border-white/10 hover:border-white/30 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
               aria-label="Previous image"
             >
               <ChevronLeft className="w-7 h-7" />
             </button>
           )}
 
-          {/* IMAGE — using inline styles to bypass any tailwind/CSS conflicts */}
-          <img
+          {/* IMAGE — using inline styles to bypass any tailwind/CSS conflicts.
+              Lightbox uses a high width (1920px) for zoom detail; still much
+              smaller than serving the raw upstream original. */}
+          <OptimizedImage
             src={mediaItems[currentProductImageIndex]?.url ?? selectedPackage.image}
             alt={selectedPackage.name}
+            width={1920}
+            quality={85}
             onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: '90vw',
@@ -648,7 +853,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
                 nextProductImage();
               }}
               style={{ position: 'absolute', right: '24px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}
-              className="w-14 h-14 bg-white/5 hover:bg-white/15 backdrop-blur-md border border-white/10 hover:border-white/30 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
+              className="w-14 h-14 bg-white/10 hover:bg-white/20 border border-white/10 hover:border-white/30 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
               aria-label="Next image"
             >
               <ChevronRight className="w-7 h-7" />
@@ -658,7 +863,7 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
           {/* Hint */}
           <div
             style={{ position: 'absolute', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}
-            className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-white/60 text-xs font-medium"
+            className="px-4 py-2 bg-white/10 border border-white/10 rounded-full text-white/60 text-xs font-medium"
           >
             Press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white/80">Esc</kbd> to close
             {mediaItems.length > 1 && (
@@ -671,5 +876,95 @@ const PackageDetailsPage: React.FC<PackageDetailsPageProps> = ({ packages }) => 
     </div>
   );
 };
+
+// ============================================================
+// Right-column section helpers
+// ============================================================
+
+// Link-style row (Preview, Documentation) — opens external or triggers an
+// action; signaled by the up-right arrow on the trailing side.
+const PDLink: React.FC<{
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  onClick: () => void;
+}> = ({ icon: Icon, label, onClick }) => (
+  <button onClick={onClick} className="pd-section pd-section-link">
+    <Icon className="pd-section-icon" />
+    <span className="pd-section-label">{label}</span>
+    <ArrowUpRight className="pd-section-arrow" />
+  </button>
+);
+
+// Expandable accordion (Package Type, Description). Body slides in below
+// when toggled open. Optional sublabel shows next to the title as a hint
+// of what's inside (e.g. "Escrow, Open Source").
+const PDAccordion: React.FC<{
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  sublabel?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}> = ({ icon: Icon, label, sublabel, defaultOpen = false, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={`pd-section pd-section-accordion ${open ? 'is-open' : ''}`}>
+      <button onClick={() => setOpen((o) => !o)} className="pd-section-row">
+        <Icon className="pd-section-icon" />
+        <span className="pd-section-label">
+          {label}
+          {sublabel && <span className="pd-section-sublabel"> | {sublabel}</span>}
+        </span>
+        <ChevronDown className={`pd-section-chevron ${open ? 'is-open' : ''}`} />
+      </button>
+      {open && <div className="pd-section-body">{children}</div>}
+    </div>
+  );
+};
+
+// Single variant choice inside the Package Type accordion — clean radio-style
+// card with subtle accent for the Subscription option.
+const VariantPick: React.FC<{
+  label: string;
+  sublabel: string;
+  price: number;
+  priceSuffix?: string;
+  selected: boolean;
+  accent?: boolean;
+  onSelect: () => void;
+}> = ({ label, sublabel, price, priceSuffix, selected, accent = false, onSelect }) => {
+  const { format: formatPrice } = useCurrency();
+  return (
+    <button
+      onClick={onSelect}
+      className={`pd-variant ${selected ? 'is-selected' : ''} ${accent ? 'is-accent' : ''}`}
+      aria-pressed={selected}
+    >
+      <span className="pd-variant-radio">
+        {selected && <span className="pd-variant-radio-dot" />}
+      </span>
+      <span className="pd-variant-text">
+        <span className="pd-variant-label">{label}</span>
+        <span className="pd-variant-sublabel">{sublabel}</span>
+      </span>
+      <span className="pd-variant-price">
+        {price === 0 ? 'Free' : formatPrice(price)}
+        {priceSuffix && <span className="pd-variant-price-suffix"> {priceSuffix}</span>}
+      </span>
+    </button>
+  );
+};
+
+// Tiny inline chart glyph used in the trust pills row. Lucide's BarChart3 was
+// removed from imports here so we inline a minimal version to keep the
+// dependency surface small.
+const BarChart3Tiny: React.FC = () => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500" aria-hidden="true">
+    <path d="M3 3v18h18" />
+    <path d="M7 16V8" />
+    <path d="M11 16V5" />
+    <path d="M15 16v-6" />
+    <path d="M19 16v-3" />
+  </svg>
+);
 
 export default PackageDetailsPage;

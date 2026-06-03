@@ -16,6 +16,7 @@ const STAGE_CONFIG: Record<
   string,
   {
     label: string;
+    description: string;
     icon: React.ReactNode;
     gradient: string;
     accent: string;
@@ -24,7 +25,8 @@ const STAGE_CONFIG: Record<
   }
 > = {
   view: {
-    label: 'Package Views',
+    label: 'Visualizações de pacote',
+    description: 'Pessoas que abriram a página de detalhe de pelo menos um pacote.',
     icon: <Eye className="w-4 h-4" />,
     gradient: 'from-blue-500/30 via-blue-500/15 to-blue-500/5',
     accent: '#3b82f6',
@@ -32,7 +34,8 @@ const STAGE_CONFIG: Record<
     ring: 'ring-blue-500/20',
   },
   cart: {
-    label: 'Added to Cart',
+    label: 'Adicionado ao carrinho',
+    description: 'Visitantes que mostraram intenção de compra adicionando ao carrinho.',
     icon: <ShoppingCart className="w-4 h-4" />,
     gradient: 'from-amber-500/30 via-amber-500/15 to-amber-500/5',
     accent: '#facc15',
@@ -40,13 +43,22 @@ const STAGE_CONFIG: Record<
     ring: 'ring-amber-500/20',
   },
   purchase: {
-    label: 'Purchases',
+    label: 'Compras',
+    description: 'Conversões finais — checkouts completados com sucesso.',
     icon: <CheckCircle2 className="w-4 h-4" />,
     gradient: 'from-emerald-500/30 via-emerald-500/15 to-emerald-500/5',
     accent: '#10b981',
     text: 'text-emerald-400',
     ring: 'ring-emerald-500/20',
   },
+};
+
+// Heuristic colour for a conversion-rate tile. Higher is better, so:
+// >= 30% emerald, 10–30% amber, otherwise muted gray.
+const conversionTone = (rate: number): { ring: string; text: string; bg: string } => {
+  if (rate >= 30) return { ring: 'ring-emerald-500/30', text: 'text-emerald-400', bg: 'bg-emerald-500/5' };
+  if (rate >= 10) return { ring: 'ring-amber-500/25', text: 'text-amber-400', bg: 'bg-amber-500/5' };
+  return { ring: 'ring-white/10', text: 'text-gray-300', bg: 'bg-white/[0.03]' };
 };
 
 export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
@@ -90,13 +102,13 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
             <Filter className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <h3 className="text-sm sm:text-base font-semibold text-white">Conversion Funnel</h3>
+          <h3 className="text-sm sm:text-base font-semibold text-white">Funil de conversão</h3>
         </div>
         <div className="h-[280px] flex flex-col items-center justify-center gap-2">
           <div className="w-12 h-12 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-center">
             <Filter className="w-5 h-5 text-gray-600" />
           </div>
-          <p className="text-sm text-gray-500">No funnel data available</p>
+          <p className="text-sm text-gray-500">Sem dados de funil disponíveis</p>
         </div>
       </div>
     );
@@ -110,12 +122,15 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
             <Filter className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <h3 className="text-sm sm:text-base font-semibold text-white">Conversion Funnel</h3>
+          <h3 className="text-sm sm:text-base font-semibold text-white">Funil de conversão</h3>
         </div>
 
         {/* Overall headline rate */}
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-          <span className="text-[10px] text-emerald-400/80 uppercase tracking-widest font-bold">Overall</span>
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
+          title="Percentagem de quem viu um pacote e acabou por comprar."
+        >
+          <span className="text-[10px] text-emerald-400/80 uppercase tracking-widest font-bold">Vista → Compra</span>
           <span className="text-sm font-bold text-emerald-400">{viewToPurchase.toFixed(1)}%</span>
         </div>
       </div>
@@ -161,13 +176,14 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
                       <div
                         className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${config.text} ring-1 ${config.ring}`}
                         style={{ backgroundColor: `${config.accent}15` }}
+                        title={config.description}
                       >
                         {config.icon}
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs sm:text-sm font-semibold text-white truncate">{config.label}</p>
                         <p className="text-[10px] sm:text-xs text-gray-500 truncate">
-                          {item.unique_sessions.toLocaleString()} unique sessions
+                          {item.unique_sessions.toLocaleString()} sessões únicas
                         </p>
                       </div>
                     </div>
@@ -177,8 +193,11 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
                         {item.count.toLocaleString()}
                       </p>
                       {prevItem && (
-                        <p className="text-[10px] sm:text-xs text-gray-500">
-                          {((item.count / prevItem.count) * 100).toFixed(1)}% kept
+                        <p
+                          className="text-[10px] sm:text-xs text-gray-500"
+                          title="Percentagem de utilizadores que avançou da etapa anterior."
+                        >
+                          {((item.count / prevItem.count) * 100).toFixed(1)}% mantidos
                         </p>
                       )}
                     </div>
@@ -189,11 +208,14 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
               {/* Drop-off indicator between stages */}
               {!isLast && prevItem !== null && (
                 <div className="flex items-center justify-center py-0.5">
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.02] border border-white/5">
+                  <div
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.02] border border-white/5"
+                    title="Percentagem de utilizadores que abandonou nesta etapa."
+                  >
                     <ArrowDown className="w-2.5 h-2.5 text-gray-500" />
                     {dropOff > 0 && (
                       <span className="text-[9px] text-gray-500 font-medium">
-                        −{dropOff.toFixed(1)}% drop-off
+                        −{dropOff.toFixed(1)}% abandono
                       </span>
                     )}
                   </div>
@@ -201,10 +223,13 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
               )}
               {!isLast && index === 0 && (
                 <div className="flex items-center justify-center py-0.5">
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.02] border border-white/5">
+                  <div
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.02] border border-white/5"
+                    title="Percentagem que viu o pacote mas não chegou a adicionar ao carrinho."
+                  >
                     <ArrowDown className="w-2.5 h-2.5 text-gray-500" />
                     <span className="text-[9px] text-gray-500 font-medium">
-                      {(100 - viewToCart).toFixed(1)}% drop-off
+                      {(100 - viewToCart).toFixed(1)}% abandono
                     </span>
                   </div>
                 </div>
@@ -214,32 +239,41 @@ export const ConversionFunnelChart: React.FC<ConversionFunnelChartProps> = ({
         })}
       </div>
 
-      {/* Conversion rate cards */}
+      {/* Conversion rate cards — colour reflects performance, not stage */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <ConversionStat
-          label="View → Cart"
-          value={viewToCart}
-          color="#facc15"
-          ringClass="ring-amber-500/20"
-          textClass="text-amber-400"
-          bgClass="bg-amber-500/5"
-        />
-        <ConversionStat
-          label="Cart → Buy"
-          value={cartToPurchase}
-          color="#10b981"
-          ringClass="ring-emerald-500/20"
-          textClass="text-emerald-400"
-          bgClass="bg-emerald-500/5"
-        />
-        <ConversionStat
-          label="Overall"
-          value={viewToPurchase}
-          color="#3b82f6"
-          ringClass="ring-blue-500/20"
-          textClass="text-blue-400"
-          bgClass="bg-blue-500/5"
-        />
+        {(() => {
+          const v2c = conversionTone(viewToCart);
+          const c2p = conversionTone(cartToPurchase);
+          const v2p = conversionTone(viewToPurchase);
+          return (
+            <>
+              <ConversionStat
+                label="Vista → Carrinho"
+                value={viewToCart}
+                ringClass={v2c.ring}
+                textClass={v2c.text}
+                bgClass={v2c.bg}
+                hint="De quem vê o pacote, quantos adicionam ao carrinho."
+              />
+              <ConversionStat
+                label="Carrinho → Compra"
+                value={cartToPurchase}
+                ringClass={c2p.ring}
+                textClass={c2p.text}
+                bgClass={c2p.bg}
+                hint="De quem adiciona ao carrinho, quantos finalizam a compra."
+              />
+              <ConversionStat
+                label="Vista → Compra"
+                value={viewToPurchase}
+                ringClass={v2p.ring}
+                textClass={v2p.text}
+                bgClass={v2p.bg}
+                hint="Conversão total: de quem viu o pacote, quantos compraram."
+              />
+            </>
+          );
+        })()}
       </div>
     </div>
   );
@@ -252,16 +286,20 @@ function ConversionStat({
   ringClass,
   textClass,
   bgClass,
+  hint,
 }: {
   label: string;
   value: number;
-  color: string;
   ringClass: string;
   textClass: string;
   bgClass: string;
+  hint?: string;
 }) {
   return (
-    <div className={`text-center p-2.5 sm:p-3 ${bgClass} ring-1 ${ringClass} rounded-lg`}>
+    <div
+      className={`text-center p-2.5 sm:p-3 ${bgClass} ring-1 ${ringClass} rounded-lg`}
+      title={hint}
+    >
       <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase tracking-widest font-semibold mb-1">
         {label}
       </p>

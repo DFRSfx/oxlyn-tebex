@@ -4,7 +4,50 @@ export default {
   theme: {
     extend: {
       colors: {
-        'primary-orange': '#FF9500',
+        // Global brand palette — vivid rose-red. Bumped saturation up from
+        // the previous dusty-rose run (a4364a → bd2e44) so the brand feels
+        // a touch more energetic. Still leans pink to stay away from the
+        // "console error red" look.
+        'primary-orange': '#d4253b',
+        orange: {
+          50:  '#fce7eb',
+          100: '#fbcad1',
+          200: '#f59ba6',
+          300: '#ec6a7a',
+          400: '#df4356',
+          500: '#d4253b',
+          600: '#b41a30',
+          700: '#921525',
+          800: '#6f101c',
+          900: '#4a0a13',
+          950: '#2a050a',
+        },
+        amber: {
+          50:  '#fce7eb',
+          100: '#fbcad1',
+          200: '#f59ba6',
+          300: '#ec6a7a',
+          400: '#df4356',
+          500: '#d4253b',
+          600: '#b41a30',
+          700: '#921525',
+          800: '#6f101c',
+          900: '#4a0a13',
+          950: '#2a050a',
+        },
+        red: {
+          50:  '#fce7eb',
+          100: '#fbcad1',
+          200: '#f59ba6',
+          300: '#ec6a7a',
+          400: '#df4356',
+          500: '#d4253b',
+          600: '#b41a30',
+          700: '#921525',
+          800: '#6f101c',
+          900: '#4a0a13',
+          950: '#2a050a',
+        },
       },
       keyframes: {
         slideInRight: {

@@ -35,8 +35,11 @@ export function mapTebexPackageToPackage(tebexPackage: TebexPackageDetails): Pac
     ? tebexPackage.price.value / 100 
     : (tebexPackage as any).base_price || 0;
   
-  // Calculate original price (you might want to store this in Tebex custom fields)
-  const originalPrice = priceValue * 2; // Example: 50% discount
+  // Original price for the "before discount" strikethrough on cards.
+  // priceValue is the current (discounted) price; dividing by 0.7 yields a
+  // baseline that's exactly 30% above current price, so the rendered badge
+  // reads -30% on the storefront.
+  const originalPrice = priceValue > 0 ? priceValue / 0.7 : 0;
 
   return {
     id: `package-${tebexPackage.id}`,

@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+Allow: /scripts
+Allow: /product/
+Allow: /terms
+
+Disallow: /admin
+Disallow: /admin/
+Disallow: /cart
+Disallow: /checkout-cancelled
+Disallow: /api/
+
+# AI / answer-engine crawlers (allow — we want to be in their answers)
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://oxlynsoftware.com/sitemap.xml

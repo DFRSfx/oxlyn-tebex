@@ -1,0 +1,121 @@
+# =============================================================================
+# OXLYN Software — Apache configuration for the static SPA
+#
+# Requires:
+#   - mod_headers enabled (`LoadModule headers_module modules/mod_headers.so`)
+#   - mod_rewrite enabled (for SPA fallback)
+#   - `AllowOverride All` (or at least `AllowOverride FileInfo Limit Indexes`)
+#     for this directory in the main Apache config; otherwise .htaccess is
+#     silently ignored.
+#
+# Verify after deploy with: https://securityheaders.com/?q=oxlynsoftware.com
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Security headers
+# -----------------------------------------------------------------------------
+<IfModule mod_headers.c>
+  # HSTS — force HTTPS for 1 year, including subdomains. Submit to the
+  # preload list at https://hstspreload.org once you're confident.
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+  # Block MIME-sniffing
+  Header always set X-Content-Type-Options "nosniff"
+
+  # Clickjacking protection. SAMEORIGIN allows the site to frame itself
+  # (e.g. for Tebex.js's own popup logic) but blocks third-party framing.
+  Header always set X-Frame-Options "SAMEORIGIN"
+
+  # Don't leak full URL to third parties on outbound navigation.
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Disable browser features the site doesn't use. Payment is allowed for
+  # `self` so the Tebex checkout popup, when run in our origin, can request
+  # the Payment Request API if needed.
+  Header always set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(self), usb=(), interest-cohort=()"
+
+  # Cross-origin headers — allow Tebex popups while keeping the site isolated.
+  Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
+  Header always set Cross-Origin-Resource-Policy "cross-origin"
+
+  # Content-Security-Policy
+  # Tightened progressively. If Tebex.js or another integration breaks at
+  # runtime, the offending directive will surface in DevTools → Console →
+  # "Refused to ..." messages — relax that one directive only.
+  #
+  #   script-src 'self'                   bundled JS only; no inline <script>
+  #                                       (the JSON-LD blocks are non-executing).
+  #   style-src 'self' 'unsafe-inline'    Tailwind + the small inline <style>
+  #                                       block in index.html. Style-based XSS
+  #                                       is a much smaller surface than script.
+  #   img-src ... https:                  open to any HTTPS host because the
+  #                                       Tebex catalog images come from
+  #                                       multiple CDNs (tebex.io, imgur, wsrv).
+  #   connect-src ... *.tebex.io          analytics + own API + Tebex.js calls.
+  #   frame-src ... *.tebex.io            embedded Tebex checkout iframes.
+  #   frame-ancestors 'self'              second clickjacking guard.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.tebex.io https://api.oxlynsoftware.com https://oxlynsoftware.com https://docs.oxlynsoftware.com; frame-src 'self' https://*.tebex.io; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+
+  # Server fingerprinting
+  Header unset Server
+  Header unset X-Powered-By
+</IfModule>
+
+# -----------------------------------------------------------------------------
+# Long-lived cache for fingerprinted assets (Vite emits hashed filenames)
+# -----------------------------------------------------------------------------
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType text/javascript "access plus 1 year"
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType image/avif "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType application/font-woff2 "access plus 1 year"
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Hashed asset URLs (e.g. /assets/index-DHirYbpP.js) are immutable across
+  # builds — safe to cache forever in the browser.
+  <FilesMatch "\.(js|css|woff2|woff|avif|webp|png|jpg|jpeg|svg|ico)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  # index.html must always revalidate so users never get a stale shell that
+  # references deleted assets.
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# -----------------------------------------------------------------------------
+# SPA fallback — every non-asset URL rewrites to /index.html so that
+# /scripts, /subscription, /product/X, etc. survive a hard refresh.
+# -----------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Don't rewrite real files / directories.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Don't rewrite API calls — those go to the backend (handled by the reverse
+  # proxy block in httpd.conf, not here).
+  RewriteRule ^api/ - [L]
+
+  # Everything else → index.html, but preserve the original URL in the address bar.
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# -----------------------------------------------------------------------------
+# Compression — assumes mod_deflate is enabled.
+# -----------------------------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json application/xml image/svg+xml font/woff2
+</IfModule>

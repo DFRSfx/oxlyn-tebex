@@ -7,6 +7,15 @@ import DownloadTokensManager from './pages/DownloadTokensManager';
 import StatisticsPage from './pages/StatisticsPage';
 import UsersAndActivityPage from './pages/UsersAndActivityPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import VanguardAnalyticsPage from './pages/VanguardAnalyticsPage';
+import PackageTagsList from './pages/PackageTagsList';
+import PackageOrderManager from './pages/PackageOrderManager';
+import TopSellersManager from './pages/TopSellersManager';
+import BundlesManager from './pages/BundlesManager';
+import CategoriesList from './pages/CategoriesList';
+import PromoCountdownManager from './pages/PromoCountdownManager';
+import RecentPaymentsManager from './pages/RecentPaymentsManager';
+import IpConnectionsManager from './pages/IpConnectionsManager';
 
 export default function AdminApp() {
   const { user, isAuthenticated } = useAuth();
@@ -40,9 +49,18 @@ export default function AdminApp() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/estatisticas" element={<StatisticsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/analytics-vanguard" element={<VanguardAnalyticsPage />} />
         <Route path="/compras" element={<OrdersList />} />
         <Route path="/downloads" element={<DownloadTokensManager />} />
         <Route path="/utilizadores" element={<UsersAndActivityPage />} />
+        <Route path="/tags" element={<PackageTagsList />} />
+        <Route path="/ordem" element={<PackageOrderManager />} />
+        <Route path="/top-sellers" element={<TopSellersManager />} />
+        <Route path="/bundles" element={<BundlesManager />} />
+        <Route path="/categorias" element={<CategoriesList />} />
+        <Route path="/countdown" element={<PromoCountdownManager />} />
+        <Route path="/recent-payments" element={<RecentPaymentsManager />} />
+        <Route path="/ip-connections" element={<IpConnectionsManager />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </AdminLayout>

@@ -10,7 +10,16 @@ import { StatsUtil } from '../utils/statsUtil.js';
 // Users are stored by Discord ID, not email
 const users: Map<string, User> = new Map();
 
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is not configured');
+  return secret;
+}
+
 const generateToken = (user: Omit<User, 'password'>): string => {
+  // Env values come back as plain `string`, but SignOptions['expiresIn']
+  // requires the narrower `number | StringValue` shape from `ms`.
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
   return jwt.sign(
     {
       id: user.id,
@@ -20,8 +29,8 @@ const generateToken = (user: Omit<User, 'password'>): string => {
       discordAvatar: user.discordAvatar,
       role: user.role
     },
-    process.env.JWT_SECRET || 'your_jwt_secret',
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    getJwtSecret(),
+    { expiresIn }
   );
 };
 
@@ -140,7 +149,7 @@ export const discordAuth = (req: Request, res: Response) => {
   // Generate random state for CSRF protection (no user ID needed yet)
   const state = jwt.sign(
     { timestamp: Date.now() },
-    process.env.JWT_SECRET || 'your_jwt_secret',
+    getJwtSecret(),
     { expiresIn: '10m' }
   );
 
@@ -160,7 +169,7 @@ export const discordCallback = async (req: Request, res: Response, next: NextFun
 
     // Verify state (CSRF protection)
     try {
-      jwt.verify(state as string, process.env.JWT_SECRET || 'your_jwt_secret');
+      jwt.verify(state as string, getJwtSecret());
     } catch (error) {
       return res.redirect(`${process.env.CLIENT_URL}/?error=invalid_state`);
     }

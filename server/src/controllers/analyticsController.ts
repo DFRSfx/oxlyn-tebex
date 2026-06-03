@@ -110,6 +110,7 @@ export class AnalyticsController {
         started_at: new Date(),
         device_type: enrichedSession.deviceType,
         country: enrichedSession.country,
+        ip_address: enrichedSession.ipAddress,
       });
 
       res.json({
@@ -205,10 +206,33 @@ export class AnalyticsController {
   // ==================== ANALYTICS ENDPOINTS (ADMIN) ====================
 
   // Get dashboard stats
+  // Accepts either ?period=7d/30d/90d OR explicit ?from=ISO&to=ISO.
+  // The from/to form lets the client compute previous-period comparisons
+  // without requiring a separate endpoint.
   static async getDashboardStats(req: Request, res: Response) {
     try {
-      const period = (req.query.period as string) || '7d';
-      const { startDate, endDate } = calculatePeriod(period);
+      const fromRaw = req.query.from as string | undefined;
+      const toRaw = req.query.to as string | undefined;
+
+      let startDate: Date;
+      let endDate: Date;
+
+      if (fromRaw && toRaw) {
+        const from = new Date(fromRaw);
+        const to = new Date(toRaw);
+        if (isNaN(from.getTime()) || isNaN(to.getTime()) || from >= to) {
+          res.status(400).json({
+            success: false,
+            message: 'Invalid from/to range',
+          });
+          return;
+        }
+        startDate = from;
+        endDate = to;
+      } else {
+        const period = (req.query.period as string) || '7d';
+        ({ startDate, endDate } = calculatePeriod(period));
+      }
 
       const stats = await AnalyticsDashboardModel.getDashboardStats(startDate, endDate);
 
@@ -354,6 +378,116 @@ export class AnalyticsController {
         success: false,
         message: 'Failed to fetch top pages',
       });
+    }
+  }
+
+  // =========================================================================
+  // VANGUARD-SCOPED ANALYTICS — admin endpoints
+  // =========================================================================
+  // Same shape as the OXLYN-wide endpoints above, but restricted to traffic
+  // that touched a /vanguardscripts or /vanguardbundles page (or any future
+  // vanguard sub-route). Lets the admin measure the impact of the dedicated
+  // shortlinks (e.g. YouTube descriptions pointing at /vanguardscripts).
+
+  private static resolvePeriod(req: Request): { startDate: Date; endDate: Date } | null {
+    const fromRaw = req.query.from as string | undefined;
+    const toRaw = req.query.to as string | undefined;
+    if (fromRaw && toRaw) {
+      const from = new Date(fromRaw);
+      const to = new Date(toRaw);
+      if (isNaN(from.getTime()) || isNaN(to.getTime()) || from >= to) return null;
+      return { startDate: from, endDate: to };
+    }
+    const period = (req.query.period as string) || '7d';
+    return calculatePeriod(period);
+  }
+
+  static async getVanguardDashboardStats(req: Request, res: Response) {
+    try {
+      const window = AnalyticsController.resolvePeriod(req);
+      if (!window) {
+        return res.status(400).json({ success: false, message: 'Invalid from/to range' });
+      }
+      const stats = await AnalyticsDashboardModel.getVanguardDashboardStats(
+        window.startDate,
+        window.endDate
+      );
+      res.json({ success: true, data: stats, period: window });
+    } catch (error) {
+      console.error('Error fetching vanguard dashboard stats:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch vanguard dashboard stats' });
+    }
+  }
+
+  static async getVanguardTimeSeries(req: Request, res: Response) {
+    try {
+      const metric = (req.query.metric as string) || 'sessions';
+      const window = AnalyticsController.resolvePeriod(req);
+      if (!window) {
+        return res.status(400).json({ success: false, message: 'Invalid from/to range' });
+      }
+      const data = await AnalyticsDashboardModel.getVanguardTimeSeries(
+        metric,
+        window.startDate,
+        window.endDate
+      );
+      res.json({ success: true, data, metric, period: window });
+    } catch (error) {
+      console.error('Error fetching vanguard time-series:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch vanguard time-series' });
+    }
+  }
+
+  static async getVanguardGeographicData(req: Request, res: Response) {
+    try {
+      const window = AnalyticsController.resolvePeriod(req);
+      if (!window) {
+        return res.status(400).json({ success: false, message: 'Invalid from/to range' });
+      }
+      const data = await AnalyticsDashboardModel.getVanguardGeographicData(
+        window.startDate,
+        window.endDate
+      );
+      res.json({ success: true, data, period: window });
+    } catch (error) {
+      console.error('Error fetching vanguard geo data:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch vanguard geo data' });
+    }
+  }
+
+  static async getVanguardDeviceData(req: Request, res: Response) {
+    try {
+      const window = AnalyticsController.resolvePeriod(req);
+      if (!window) {
+        return res.status(400).json({ success: false, message: 'Invalid from/to range' });
+      }
+      const data = await AnalyticsDashboardModel.getVanguardDeviceData(
+        window.startDate,
+        window.endDate
+      );
+      res.json({ success: true, data, period: window });
+    } catch (error) {
+      console.error('Error fetching vanguard device data:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch vanguard device data' });
+    }
+  }
+
+  static async getVanguardTopPages(req: Request, res: Response) {
+    try {
+      const window = AnalyticsController.resolvePeriod(req);
+      if (!window) {
+        return res.status(400).json({ success: false, message: 'Invalid from/to range' });
+      }
+      const limit = parseInt(req.query.limit as string) || 10;
+      const data = await AnalyticsDashboardModel.getVanguardTopPages(
+        window.startDate,
+        window.endDate,
+        limit
+      );
+      res.json({ success: true, data, period: window });
+    } catch (error) {
+      console.error('Error fetching vanguard top pages:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch vanguard top pages' });
     }
   }
 

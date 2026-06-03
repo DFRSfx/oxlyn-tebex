@@ -3,11 +3,11 @@ export const scrollToSection = (sectionId: string) => {
 };
 
 export const handleDiscordRedirect = () => {
-  window.open('https://discord.gg/Jskkg4h54r', '_blank');
+  window.open('https://discord.gg/KjWmrSwMXg', '_blank');
 };
 
 export const handleYoutubeRedirect = () => {
-  window.open('https://www.youtube.com/@oxlynsoftware', '_blank');
+  window.open('https://www.youtube.com/@oxlynfivem', '_blank');
 };
 
 export const handleTebexRedirect = () => {

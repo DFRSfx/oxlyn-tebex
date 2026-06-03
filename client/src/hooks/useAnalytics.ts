@@ -59,6 +59,12 @@ export function useAnalytics() {
     analyticsRef.current?.setUser(userId, discordId);
   }, []);
 
+  // Toggle analytics suppression — keeps admin accounts out of the storefront
+  // metrics. Persisted across reloads inside the SDK.
+  const setSuppressed = useCallback((value: boolean) => {
+    analyticsRef.current?.setSuppressed(value);
+  }, []);
+
   const flush = useCallback(async () => {
     await analyticsRef.current?.flush();
   }, []);
@@ -70,6 +76,7 @@ export function useAnalytics() {
     trackCartAdd,
     trackPurchase,
     setUser,
+    setSuppressed,
     flush,
     analytics: analyticsRef.current,
   };
